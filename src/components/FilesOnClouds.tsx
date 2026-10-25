@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, useImperativeHandle } from 'react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import {
   Cloud,
   Upload,

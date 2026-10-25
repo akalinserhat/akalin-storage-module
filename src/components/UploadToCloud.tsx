@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { Upload, Cloud, File as FileIcon } from 'lucide-react';
 import { FileUploadProgressBar, BasePopup, BaseButton, CancelButton } from '@akalin/ui';
 import { useTranslation } from 'react-i18next';

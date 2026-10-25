@@ -22,17 +22,6 @@
     "react-i18next": "^13.0.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0",
     "react-router-dom": "^6.0.0 || ^7.0.0"
   },
-  "peerDependenciesMeta": {
-    "i18next": {
-      "optional": true
-    },
-    "react-hot-toast": {
-      "optional": true
-    },
-    "react-i18next": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",

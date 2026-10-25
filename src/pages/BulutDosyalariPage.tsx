@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Cloud, CloudOff, Settings, RefreshCw, Upload, FolderPlus, HardDrive, Paperclip } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { BaseCardPage, ActionMenu, BaseSwitch } from '@akalin/ui';
 import FilesOnClouds, { FilesOnCloudsHandle } from '../components/FilesOnClouds';
 import { useStorageModule } from '../adapters/StorageServiceContext';

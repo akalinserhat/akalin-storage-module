@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Cloud, Key, ExternalLink, RefreshCcw, Eye, EyeOff, BookOpen, CheckCircle2, AlertCircle } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 import { BaseCardPage, BaseCard, BasitInput } from '@akalin/ui';
 import { useStorageModule } from '../adapters/StorageServiceContext';

@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { Cloud, CheckCircle2, Trash2, HardDrive, RefreshCcw } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { BaseSystemPage, BaseSystemCard, StorageQuotaBar } from '@akalin/ui';
 import { useStorageModule } from '../adapters/StorageServiceContext';
 import { ProviderLogo } from '../logos/ProviderLogo';
