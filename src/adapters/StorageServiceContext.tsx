@@ -53,7 +53,7 @@ export function createRestStorageAdapter(options?: {
       } catch {
         try {
           errText = await res.text();
-        } catch {}
+        } catch { }
       }
       throw new Error(errText);
     }
@@ -196,7 +196,7 @@ export function createRestStorageAdapter(options?: {
               try {
                 const errJson = JSON.parse(xhr.responseText);
                 msg = errJson.message || errJson.mesaj || msg;
-              } catch {}
+              } catch { }
               reject(new Error(msg));
             }
           };
@@ -226,7 +226,7 @@ export function createRestStorageAdapter(options?: {
         try {
           const errJson = await res.json();
           errText = errJson.message || errJson.mesaj || JSON.stringify(errJson);
-        } catch {}
+        } catch { }
         throw new Error(errText);
       }
       return await res.arrayBuffer();
@@ -389,7 +389,7 @@ export function createLocalStorageStorageAdapter(options?: {
         } else {
           localStorage.removeItem(`${prefix}${key}`);
         }
-      } catch {}
+      } catch { }
     },
   };
 }

@@ -696,15 +696,15 @@ export const FileExportPage: React.FC<FileExportPageProps> = ({
     (effectiveDocumentNo
       ? `${t('Belge No')}: ${effectiveDocumentNo}`
       : effectiveDocumentType
-      ? `${t('Belge')}: ${t(effectiveDocumentType)}`
-      : t('FileExport_subtitle', 'Dosyayı bilgisayarınıza indirin veya doğrudan bulut depolama klasörünüze kaydedin'));
+        ? `${t('Belge')}: ${t(effectiveDocumentType)}`
+        : t('FileExport_subtitle', 'Dosyayı bilgisayarınıza indirin veya doğrudan bulut depolama klasörünüze kaydedin'));
 
   const saveBtnLabel =
     targetTab === 'cloud'
       ? t('FileExport_saveToCloudBtn', 'Buluta Kaydet')
       : isBulutActive && alsoSaveToCloud
-      ? t('FileExport_downloadAndCloudBtn', 'İndir ve Buluta Kaydet')
-      : t('FileExport_downloadLocalBtn', 'Bilgisayara İndir');
+        ? t('FileExport_downloadAndCloudBtn', 'İndir ve Buluta Kaydet')
+        : t('FileExport_downloadLocalBtn', 'Bilgisayara İndir');
 
   const cardContent = (
     <BaseCardPage
@@ -853,9 +853,8 @@ export const FileExportPage: React.FC<FileExportPageProps> = ({
                     <button
                       key={intItem.id}
                       type="button"
-                      className={`btn btn-sm flex items-center gap-8 ${
-                        selectedProvider === intItem.providerType ? 'btn-primary' : 'btn-outline-secondary'
-                      }`}
+                      className={`btn btn-sm flex items-center gap-8 ${selectedProvider === intItem.providerType ? 'btn-primary' : 'btn-outline-secondary'
+                        }`}
                       onClick={() => setSelectedProvider(intItem.providerType)}
                     >
                       <ProviderLogo provider={intItem.providerType} size={16} />
@@ -958,9 +957,8 @@ export const FileExportPage: React.FC<FileExportPageProps> = ({
                     key={col.key}
                     type="button"
                     onClick={() => toggleColumnSelection(col.key)}
-                    className={`btn btn-sm flex items-center gap-6 ${
-                      isSelected ? 'btn-primary' : 'btn-outline-secondary'
-                    }`}
+                    className={`btn btn-sm flex items-center gap-6 ${isSelected ? 'btn-primary' : 'btn-outline-secondary'
+                      }`}
                   >
                     {isSelected ? <CheckCircle2 size={14} /> : <Circle size={14} />}
                     <span>{col.label}</span>

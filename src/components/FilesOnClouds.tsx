@@ -443,25 +443,25 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       () => [
         ...(isSelectMode && selectionMode === 'multiple'
           ? [
-              {
-                id: 'selectCheck',
-                header: '',
-                accessor: 'id',
-                width: '44px',
-                render: (row: CloudFileItem) => {
-                  const isChecked = selectedFileIds.includes(row.id);
-                  return (
-                    <div className="flex items-center justify-center">
-                      {isChecked ? (
-                        <CheckCircle2 size={18} className="text-primary" />
-                      ) : (
-                        <Circle size={18} className="text-secondary" />
-                      )}
-                    </div>
-                  );
-                },
+            {
+              id: 'selectCheck',
+              header: '',
+              accessor: 'id',
+              width: '44px',
+              render: (row: CloudFileItem) => {
+                const isChecked = selectedFileIds.includes(row.id);
+                return (
+                  <div className="flex items-center justify-center">
+                    {isChecked ? (
+                      <CheckCircle2 size={18} className="text-primary" />
+                    ) : (
+                      <Circle size={18} className="text-secondary" />
+                    )}
+                  </div>
+                );
               },
-            ]
+            },
+          ]
           : []),
         {
           id: 'dosyaAdi',
@@ -472,9 +472,8 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
             return (
               <div className="flex items-center gap-12 py-4">
                 <div
-                  className={`flex items-center justify-center w-36 h-36 rounded-8 border border-glass flex-shrink-0 ${
-                    isChecked ? 'bg-primary-light text-primary' : 'bg-surface-variant text-primary'
-                  }`}
+                  className={`flex items-center justify-center w-36 h-36 rounded-8 border border-glass flex-shrink-0 ${isChecked ? 'bg-primary-light text-primary' : 'bg-surface-variant text-primary'
+                    }`}
                 >
                   {renderFileTypeIcon(row.dosyaAdi, 18)}
                 </div>
@@ -514,24 +513,24 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
               actions={[
                 ...(isSelectMode
                   ? [
-                      {
-                        label:
-                          selectionMode === 'multiple' && selectedFileIds.includes(row.id)
-                            ? t('FilesOnClouds_unselect', 'Seçimi Kaldır')
-                            : t('FilesOnClouds_select', 'Seç'),
-                        icon: <Paperclip size={15} />,
-                        onClick: () => handleRowSelection(row),
-                      },
-                    ]
+                    {
+                      label:
+                        selectionMode === 'multiple' && selectedFileIds.includes(row.id)
+                          ? t('FilesOnClouds_unselect', 'Seçimi Kaldır')
+                          : t('FilesOnClouds_select', 'Seç'),
+                      icon: <Paperclip size={15} />,
+                      onClick: () => handleRowSelection(row),
+                    },
+                  ]
                   : []),
                 ...(row.dosyaUrl
                   ? [
-                      {
-                        label: t('FilesOnClouds_open', 'Aç / Görüntüle'),
-                        icon: <ExternalLink size={15} />,
-                        onClick: () => window.open(row.dosyaUrl, '_blank'),
-                      },
-                    ]
+                    {
+                      label: t('FilesOnClouds_open', 'Aç / Görüntüle'),
+                      icon: <ExternalLink size={15} />,
+                      onClick: () => window.open(row.dosyaUrl, '_blank'),
+                    },
+                  ]
                   : []),
                 {
                   label: t('FilesOnClouds_rename', 'Yeniden Adlandır'),

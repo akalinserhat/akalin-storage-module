@@ -211,8 +211,8 @@ export const openExcelInNewTab = (
         sheet.validColumns && sheet.validColumns.length > 0
           ? sheet.validColumns
           : sheet.data.length > 0
-          ? Array.from({ length: sheet.maxCols || (sheet.data[0] as any[])?.length || 1 }, (_, i) => i)
-          : [];
+            ? Array.from({ length: sheet.maxCols || (sheet.data[0] as any[])?.length || 1 }, (_, i) => i)
+            : [];
 
       const headerColsHtml = colIndices
         .map((cIdx) => {
@@ -266,9 +266,9 @@ export const openExcelInNewTab = (
       ? `
         <div class="tabs-bar">
             ${sheets
-              .map((sheet, sIdx) => {
-                const isCurrent = sheet.name === activeSheetName || (!defaultSheetName && sIdx === 0);
-                return `
+        .map((sheet, sIdx) => {
+          const isCurrent = sheet.name === activeSheetName || (!defaultSheetName && sIdx === 0);
+          return `
                     <button 
                         id="tab_btn_${sIdx}" 
                         class="tab-btn ${isCurrent ? 'active' : ''}" 
@@ -277,8 +277,8 @@ export const openExcelInNewTab = (
                         📄 ${escapeHtml(sheet.name)} (${sheet.data.length})
                     </button>
                 `;
-              })
-              .join('')}
+        })
+        .join('')}
         </div>
     `
       : '';
@@ -886,7 +886,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
           const tempSheets = parseExcelFromBuffer(wb, target.name, false);
           openExcelInNewTab(target.name, tempSheets, tempSheets[0]?.name, t);
           return;
-        } catch {}
+        } catch { }
       }
 
       if (target.localFile) {
@@ -1117,8 +1117,8 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         const missingLabels = missingRequired.map((c) => c.label).join(', ');
         toast.error(
           t('ExcelImport_missingRequired', 'Lütfen zorunlu alanları eşleştirin: ') +
-            missingLabels +
-            ` (${sheet.name})`
+          missingLabels +
+          ` (${sheet.name})`
         );
         return;
       }
@@ -1236,8 +1236,8 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       title: allCloudFiles
         ? t('ExcelImport_alreadyOnCloud', 'Zaten Bulutta')
         : !isBulutActive
-        ? t('ExcelImport_moduleDisabled', 'Modül Pasif')
-        : t('Buluta_Kaydet', 'Buluta Kaydet'),
+          ? t('ExcelImport_moduleDisabled', 'Modül Pasif')
+          : t('Buluta_Kaydet', 'Buluta Kaydet'),
       onClick: () => {
         if (!allCloudFiles && isBulutActive) {
           setSendToCloud((prev) => !prev);
@@ -1301,21 +1301,21 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     return [
       ...(primaryFile && ['xlsx', 'xls', 'csv', 'ods'].includes(primaryFile.extension)
         ? [
-            {
-              label: t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç'),
-              icon: <ExternalLink size={16} />,
-              onClick: () => handlePreviewFileInNewTab(primaryFile),
-            },
-          ]
+          {
+            label: t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç'),
+            icon: <ExternalLink size={16} />,
+            onClick: () => handlePreviewFileInNewTab(primaryFile),
+          },
+        ]
         : []),
       ...(effectiveSelectionMode === 'multiple'
         ? [
-            {
-              label: t('FileImport_addMoreFiles', 'Yeni Dosya Ekle'),
-              icon: <Plus size={16} />,
-              onClick: () => localFileInputRef.current?.click(),
-            },
-          ]
+          {
+            label: t('FileImport_addMoreFiles', 'Yeni Dosya Ekle'),
+            icon: <Plus size={16} />,
+            onClick: () => localFileInputRef.current?.click(),
+          },
+        ]
         : []),
       {
         label:
@@ -1327,12 +1327,12 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       },
       ...(isBulutActive && hasLocalFiles
         ? [
-            {
-              ...sendToCloudAction,
-              isDefault: false,
-              default: false,
-            },
-          ]
+          {
+            ...sendToCloudAction,
+            isDefault: false,
+            default: false,
+          },
+        ]
         : []),
     ];
   }, [
@@ -1358,8 +1358,8 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     (isExcelMappingMode
       ? t('ExcelImport_title', "Excel'den Veri Al")
       : effectiveSelectionMode === 'multiple'
-      ? t('FileImport_titleMultiple', 'Dosyaları İçeri Aktar')
-      : t('FileImport_title', 'Dosya İçeri Aktar'));
+        ? t('FileImport_titleMultiple', 'Dosyaları İçeri Aktar')
+        : t('FileImport_title', 'Dosya İçeri Aktar'));
 
   const subtitleText =
     subtitle ||
@@ -1368,12 +1368,12 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         ? `${primaryFile.name} • ${sheets.reduce((acc, s) => acc + s.data.length, 0)} ${t('satır', 'satır')}`
         : `${selectedFiles.length} ${t('FileImport_filesSelectedCount', 'dosya seçildi')}`
       : effectiveDocumentNo
-      ? `${t('Belge No')}: ${effectiveDocumentNo}`
-      : effectiveDocumentType
-      ? `${t('Belge')}: ${t(effectiveDocumentType)}`
-      : isExcelMappingMode
-      ? t('ExcelImport_subtitle', 'Excel dosyasından veri aktarımı ve sütun eşleştirme')
-      : t('FileImport_subtitle', 'Bilgisayarınızdan veya bulut depolama hesabınızdan dosya seçin'));
+        ? `${t('Belge No')}: ${effectiveDocumentNo}`
+        : effectiveDocumentType
+          ? `${t('Belge')}: ${t(effectiveDocumentType)}`
+          : isExcelMappingMode
+            ? t('ExcelImport_subtitle', 'Excel dosyasından veri aktarımı ve sütun eşleştirme')
+            : t('FileImport_subtitle', 'Bilgisayarınızdan veya bulut depolama hesabınızdan dosya seçin'));
 
   const filterBadgeLabel =
     effectiveAllowedExtensions.length > 0
@@ -1610,16 +1610,16 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
                         {['xlsx', 'xls', 'csv', 'ods', 'pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(
                           item.extension
                         ) && (
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm text-12 flex items-center gap-4"
-                            onClick={() => handlePreviewFileInNewTab(item)}
-                            title={t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç')}
-                          >
-                            <ExternalLink size={14} />
-                            <span>{t('Onizle', 'Önizle')}</span>
-                          </button>
-                        )}
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm text-12 flex items-center gap-4"
+                              onClick={() => handlePreviewFileInNewTab(item)}
+                              title={t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç')}
+                            >
+                              <ExternalLink size={14} />
+                              <span>{t('Onizle', 'Önizle')}</span>
+                            </button>
+                          )}
                         <button
                           type="button"
                           className="btn-icon-xs text-danger"
@@ -1757,9 +1757,9 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
                               {activeSheetData.validColumns.map((i) => {
                                 const headerLabel =
                                   activeSheetData.data.length > 0 &&
-                                  activeSheetData.data[0][i] !== undefined &&
-                                  activeSheetData.data[0][i] !== null &&
-                                  String(activeSheetData.data[0][i]).trim() !== ''
+                                    activeSheetData.data[0][i] !== undefined &&
+                                    activeSheetData.data[0][i] !== null &&
+                                    String(activeSheetData.data[0][i]).trim() !== ''
                                     ? ` (${String(activeSheetData.data[0][i]).substring(0, 30)})`
                                     : '';
                                 return (

@@ -180,8 +180,8 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
   const subtitleText = activeDocNo
     ? `${t('Belge No')}: ${activeDocNo}`
     : activeDocType
-    ? `${t('Belge')}: ${t(activeDocType)}`
-    : t('FilesOnClouds_subtitle', 'Google Drive, OneDrive ve bulut sürücülerinizdeki dökümanları yönetin.');
+      ? `${t('Belge')}: ${t(activeDocType)}`
+      : t('FilesOnClouds_subtitle', 'Google Drive, OneDrive ve bulut sürücülerinizdeki dökümanları yönetin.');
 
   const cardContent = (
     <BaseCardPage
@@ -207,12 +207,12 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
               },
               ...(shouldShowFolderTree
                 ? [
-                    {
-                      label: t('FilesOnClouds_addFolderTitle', 'Yeni Klasör Oluştur'),
-                      icon: <FolderPlus size={16} />,
-                      onClick: () => filesOnCloudsRef.current?.openCreateFolder(),
-                    },
-                  ]
+                  {
+                    label: t('FilesOnClouds_addFolderTitle', 'Yeni Klasör Oluştur'),
+                    icon: <FolderPlus size={16} />,
+                    onClick: () => filesOnCloudsRef.current?.openCreateFolder(),
+                  },
+                ]
                 : []),
               {
                 label: t('BulutDosyalari_analizEt', 'Bulut Dosyalarını Analiz Et'),
@@ -226,12 +226,12 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
               },
               ...(onFileSelected || onSelectFile
                 ? [
-                    {
-                      label: t('Bilgisayarımdan Seç', 'Bilgisayarımdan Seç'),
-                      icon: <HardDrive size={16} />,
-                      onClick: () => filesOnCloudsRef.current?.openLocalFilePicker?.(),
-                    },
-                  ]
+                  {
+                    label: t('Bilgisayarımdan Seç', 'Bilgisayarımdan Seç'),
+                    icon: <HardDrive size={16} />,
+                    onClick: () => filesOnCloudsRef.current?.openLocalFilePicker?.(),
+                  },
+                ]
                 : []),
               {
                 custom: (
