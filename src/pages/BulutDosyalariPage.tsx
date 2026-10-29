@@ -1,5 +1,5 @@
 /**
- * @akalin/storage_module - Bulut Dosyaları Sayfası (BulutDosyalariPage.tsx)
+ * @akalin/file_manager_module - Bulut Dosyaları Sayfası (BulutDosyalariPage.tsx)
  * BaseCardPage standart şablonundan türetilmiştir.
  * Hem bağımsız sayfa rotası (/araclar/bulut-dosyalari) hem de belgelerden açılan tam ekran
  * BaseCardPage modal arabirimi olarak çift yönlü çalışır.
@@ -183,8 +183,6 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
     ? `${t('Belge')}: ${t(activeDocType)}`
     : t('FilesOnClouds_subtitle', 'Google Drive, OneDrive ve bulut sürücülerinizdeki dökümanları yönetin.');
 
-  const subtitleBadge = activeDocType ? (activeDocNo ? t(activeDocType) : t('Yeni Belge')) : undefined;
-
   const cardContent = (
     <BaseCardPage
       id="bulutDosyalariCardPage"
@@ -192,7 +190,6 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
       title={t('FilesOnClouds_title', 'Bulut Dosyaları')}
       pageTitle={t('FilesOnClouds_title', 'Bulut Dosyaları')}
       subtitleLeft={subtitleText}
-      subtitleRight={subtitleBadge}
       showBackButton={true}
       onClose={handleClose}
       onBack={handleClose}

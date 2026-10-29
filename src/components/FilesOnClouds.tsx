@@ -1,22 +1,28 @@
 /**
- * @akalin/storage_module - Bulut Dosyaları Yönetim Bileşeni (FilesOnClouds.tsx)
+ * @akalin/file_manager_module - Bulut Dosyaları Yönetim Bileşeni (FilesOnClouds.tsx)
  * Kullanıcının Google Drive, OneDrive vb. bulut sağlayıcılarındaki dosyalarını listeler,
- * klasör ağacını yönetir, yeni dosya yükler ve belgelerle ilişkilendirir.
+ * klasör ağacını yönetir, dosya tipi filtreleme ve tekli/çoklu dosya seçimi sunar,
+ * yeni dosya yükler ve belgelerle ilişkilendirir.
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, useImperativeHandle } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Cloud,
   Upload,
   ExternalLink,
-  HardDrive,
   Trash2,
   Edit2,
   RefreshCw,
   FolderPlus,
   Paperclip,
   FileSpreadsheet,
+  FileText,
+  Image as ImageIcon,
+  FileArchive,
+  FileCode,
+  File as FileGenericIcon,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -30,16 +36,41 @@ import {
 import UploadToCloud from './UploadToCloud';
 import { useStorageModule } from '../adapters/StorageServiceContext';
 import { ProviderLogo } from '../logos/ProviderLogo';
-import { CloudFileItem, CloudFolderItem, StorageIntegrationDTO } from '../types';
+import { CloudFileItem, CloudFolderItem, FileSelectionMode, StorageIntegrationDTO } from '../types';
 import { validateFolderName, validateFileName } from '../validators/storageValidation';
 
-const formatBytes = (bytes: number, decimals = 2) => {
+export const formatFileBytes = (bytes: number, decimals = 2) => {
   if (!+bytes) return '0 Bytes';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+};
+
+export const getFileExtension = (fileName?: string): string => {
+  if (!fileName || !fileName.includes('.')) return '';
+  return (fileName.split('.').pop() || '').toLowerCase().trim();
+};
+
+export const renderFileTypeIcon = (fileName?: string, size = 18) => {
+  const ext = getFileExtension(fileName);
+  if (['xlsx', 'xls', 'csv', 'ods'].includes(ext)) {
+    return <FileSpreadsheet size={size} />;
+  }
+  if (['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt'].includes(ext)) {
+    return <FileText size={size} />;
+  }
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
+    return <ImageIcon size={size} />;
+  }
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+    return <FileArchive size={size} />;
+  }
+  if (['json', 'xml', 'html', 'js', 'ts'].includes(ext)) {
+    return <FileCode size={size} />;
+  }
+  return <FileGenericIcon size={size} />;
 };
 
 const normalizeFolderName = (s: string) => s.trim().toLowerCase().replace(/[\s_\-.]/g, '');
@@ -58,7 +89,7 @@ const findFolderRecursively = (
   return null;
 };
 
-const findDocumentFolder = (
+export const findDocumentFolder = (
   folderList: CloudFolderItem[],
   targetDocType?: string,
   targetDocNo?: string
@@ -102,8 +133,12 @@ export interface FilesOnCloudsProps {
   isModal?: boolean;
   showFolderTree?: boolean;
   isSelectMode?: boolean;
+  selectionMode?: FileSelectionMode;
+  selectedFileIds?: number[];
+  allowedExtensions?: string[];
   onFileSelected?: (file: CloudFileItem) => void;
   onSelectFile?: (file: CloudFileItem) => void;
+  onToggleSelectFile?: (file: CloudFileItem) => void;
   onAnalyzeCloudFiles?: () => void;
   hideToolbarActions?: boolean;
   isAttachedOnly?: boolean;
@@ -132,8 +167,12 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       isModal = false,
       showFolderTree = true,
       isSelectMode = false,
+      selectionMode = 'single',
+      selectedFileIds = [],
+      allowedExtensions,
       onFileSelected,
       onSelectFile,
+      onToggleSelectFile,
       onAnalyzeCloudFiles,
       hideToolbarActions = false,
       isAttachedOnly,
@@ -142,7 +181,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
     ref
   ) => {
     const { t } = useTranslation();
-    const { adapter, onNotify, showAlert } = useStorageModule();
+    const { adapter, onNotify } = useStorageModule();
 
     const isAttachedMode = !!(documentId || documentGuid || documentType);
     const [files, setFiles] = useState<CloudFileItem[]>([]);
@@ -177,7 +216,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
     const [renamingFile, setRenamingFile] = useState<CloudFileItem | null>(null);
     const [newFileName, setNewFileName] = useState('');
     const [isRenameOpen, setIsRenameOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm] = useState('');
 
     const [deleteModalState, setDeleteModalState] = useState<{
       isOpen: boolean;
@@ -258,7 +297,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
 
         const data = await adapter.getFiles(params);
         setFiles(data || []);
-      } catch (err) {
+      } catch {
         notify('error', t('FilesOnClouds_loadError', 'Dosyalar yüklenirken bir hata oluştu.'));
       } finally {
         setLoading(false);
@@ -273,11 +312,21 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       fetchFiles();
     }, [fetchFiles]);
 
+    // Uzantı filtresine göre dosyaları süz
+    const filteredFiles = useMemo(() => {
+      if (!allowedExtensions || allowedExtensions.length === 0) return files;
+      const normalizedAllowed = allowedExtensions.map((ext) => ext.replace(/^\./, '').toLowerCase().trim());
+      return files.filter((f) => {
+        const ext = getFileExtension(f.dosyaAdi);
+        return normalizedAllowed.includes(ext);
+      });
+    }, [files, allowedExtensions]);
+
     const handleCreateFolder = async (folderName?: string) => {
       const name = folderName || newFolderName;
       const valResult = validateFolderName(name);
       if (!valResult.isValid) {
-        notify('error', valResult.message || 'Geçersiz klasör adı.');
+        notify('error', valResult.message || t('Gecersiz_klasor_adi', 'Geçersiz klasör adı.'));
         return;
       }
 
@@ -302,7 +351,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       const name = fileName || newFileName;
       const valResult = validateFileName(name);
       if (!valResult.isValid) {
-        notify('error', valResult.message || 'Geçersiz dosya adı.');
+        notify('error', valResult.message || t('Gecersiz_dosya_adi', 'Geçersiz dosya adı.'));
         return;
       }
 
@@ -365,6 +414,19 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       }
     };
 
+    const handleRowSelection = useCallback(
+      (row: CloudFileItem) => {
+        if (selectionMode === 'multiple' && onToggleSelectFile) {
+          onToggleSelectFile(row);
+          return;
+        }
+        if (onFileSelected) onFileSelected(row);
+        if (onSelectFile) onSelectFile(row);
+        if (onClose && selectionMode === 'single') onClose();
+      },
+      [selectionMode, onToggleSelectFile, onFileSelected, onSelectFile, onClose]
+    );
+
     useImperativeHandle(ref, () => ({
       openUpload: () => setIsUploadModalOpen(true),
       openCreateFolder: () => setIsCreateFolderOpen(true),
@@ -379,25 +441,55 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
 
     const columns = useMemo(
       () => [
+        ...(isSelectMode && selectionMode === 'multiple'
+          ? [
+              {
+                id: 'selectCheck',
+                header: '',
+                accessor: 'id',
+                width: '44px',
+                render: (row: CloudFileItem) => {
+                  const isChecked = selectedFileIds.includes(row.id);
+                  return (
+                    <div className="flex items-center justify-center">
+                      {isChecked ? (
+                        <CheckCircle2 size={18} className="text-primary" />
+                      ) : (
+                        <Circle size={18} className="text-secondary" />
+                      )}
+                    </div>
+                  );
+                },
+              },
+            ]
+          : []),
         {
           id: 'dosyaAdi',
           header: t('FilesOnClouds_colName', 'Dosya Adı'),
           accessor: 'dosyaAdi',
-          render: (row: CloudFileItem) => (
-            <div className="flex items-center gap-12 py-4">
-              <div className="flex items-center justify-center w-36 h-36 rounded-8 bg-surface-variant text-primary border border-glass flex-shrink-0">
-                <FileSpreadsheet size={18} />
+          render: (row: CloudFileItem) => {
+            const isChecked = isSelectMode && selectionMode === 'multiple' && selectedFileIds.includes(row.id);
+            return (
+              <div className="flex items-center gap-12 py-4">
+                <div
+                  className={`flex items-center justify-center w-36 h-36 rounded-8 border border-glass flex-shrink-0 ${
+                    isChecked ? 'bg-primary-light text-primary' : 'bg-surface-variant text-primary'
+                  }`}
+                >
+                  {renderFileTypeIcon(row.dosyaAdi, 18)}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="font-semibold text-13 text-primary truncate" title={row.dosyaAdi}>
+                    {row.dosyaAdi}
+                  </span>
+                  <span className="text-11 text-secondary">
+                    {formatFileBytes(row.boyut)} •{' '}
+                    {row.yuklemeTarihi ? new Date(row.yuklemeTarihi).toLocaleDateString() : '-'}
+                  </span>
+                </div>
               </div>
-              <div className="flex flex-col min-w-0">
-                <span className="font-semibold text-13 text-primary truncate" title={row.dosyaAdi}>
-                  {row.dosyaAdi}
-                </span>
-                <span className="text-11 text-secondary">
-                  {formatBytes(row.boyut)} • {row.yuklemeTarihi ? new Date(row.yuklemeTarihi).toLocaleDateString() : '-'}
-                </span>
-              </div>
-            </div>
-          ),
+            );
+          },
         },
         {
           id: 'provider',
@@ -406,7 +498,9 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
           render: (row: CloudFileItem) => (
             <div className="flex items-center gap-6">
               {row.provider && <ProviderLogo provider={row.provider} size={18} />}
-              <span className="text-12 font-medium capitalize text-secondary">{row.provider || 'Bulut'}</span>
+              <span className="text-12 font-medium capitalize text-secondary">
+                {row.provider || t('Bulut', 'Bulut')}
+              </span>
             </div>
           ),
         },
@@ -421,13 +515,12 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
                 ...(isSelectMode
                   ? [
                       {
-                        label: t('FilesOnClouds_select', 'Seç'),
+                        label:
+                          selectionMode === 'multiple' && selectedFileIds.includes(row.id)
+                            ? t('FilesOnClouds_unselect', 'Seçimi Kaldır')
+                            : t('FilesOnClouds_select', 'Seç'),
                         icon: <Paperclip size={15} />,
-                        onClick: () => {
-                          if (onFileSelected) onFileSelected(row);
-                          if (onSelectFile) onSelectFile(row);
-                          if (onClose) onClose();
-                        },
+                        onClick: () => handleRowSelection(row),
                       },
                     ]
                   : []),
@@ -460,7 +553,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
           ),
         },
       ],
-      [t, isSelectMode, onFileSelected, onSelectFile, onClose]
+      [t, isSelectMode, selectionMode, selectedFileIds, handleRowSelection]
     );
 
     if (!isOpen) return null;
@@ -472,12 +565,18 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
           ref={localFileInputRef}
           type="file"
           className="hidden"
+          multiple={selectionMode === 'multiple'}
+          accept={
+            allowedExtensions && allowedExtensions.length > 0
+              ? allowedExtensions.map((ext) => (ext.startsWith('.') ? ext : `.${ext}`)).join(',')
+              : undefined
+          }
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) {
               const file = e.target.files[0];
-              if (onFileSelected) onFileSelected({ id: 0, dosyaAdi: file.name, boyut: file.size } as any);
-              if (onSelectFile) onSelectFile({ id: 0, dosyaAdi: file.name, boyut: file.size } as any);
-              if (onClose) onClose();
+              if (onFileSelected) onFileSelected({ id: 0, dosyaAdi: file.name, boyut: file.size, localFile: file } as any);
+              if (onSelectFile) onSelectFile({ id: 0, dosyaAdi: file.name, boyut: file.size, localFile: file } as any);
+              if (onClose && selectionMode === 'single') onClose();
             }
           }}
         />
@@ -566,22 +665,14 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
           <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-16">
             <DataTable
               columns={columns}
-              data={files}
+              data={filteredFiles}
               loading={loading}
               emptyMessage={
                 effectiveAttachedOnly
                   ? t('FilesOnClouds_noAttachedFiles', 'Bu belgeye iliştirilmiş bulut dosyası bulunmuyor.')
-                  : t('FilesOnClouds_noFiles', 'Bu klasörde henüz dosya bulunmuyor.')
+                  : t('FilesOnClouds_noFiles', 'Bu klasörde henüz uygun dosya bulunmuyor.')
               }
-              onRowClick={
-                isSelectMode
-                  ? (row: CloudFileItem) => {
-                      if (onFileSelected) onFileSelected(row);
-                      if (onSelectFile) onSelectFile(row);
-                      if (onClose) onClose();
-                    }
-                  : undefined
-              }
+              onRowClick={isSelectMode ? handleRowSelection : undefined}
             />
           </div>
         </div>

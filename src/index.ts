@@ -1,5 +1,6 @@
 /**
- * @akalin/storage_module - Bağımsız Bulut Depolama Modülü Ana Giriş Noktası (index.ts)
+ * @akalin/file_manager_module - Yerel & Bulut Dosya Al / Kaydet / Yönet Modülü Ana Giriş Noktası (index.ts)
+ * (Local & Cloud File Import, Export & Storage Manager)
  */
 
 export * from './types';
@@ -8,9 +9,13 @@ export * from './validators/storageValidation';
 export {
   createRestStorageAdapter,
   createLocalStorageStorageAdapter,
+  createRestFileManagerAdapter,
+  createLocalStorageFileManagerAdapter,
   StorageModuleContext,
   StorageModuleProvider,
+  FileManagerModuleProvider,
   useStorageModule,
+  useFileManagerModule,
   setGlobalStorageModuleConfig,
   getGlobalStorageModuleConfig,
   type StorageModuleContextValue,
@@ -26,6 +31,10 @@ export {
 } from './logos/ProviderLogo';
 export {
   FilesOnClouds,
+  formatFileBytes,
+  getFileExtension,
+  renderFileTypeIcon,
+  findDocumentFolder,
   type FilesOnCloudsProps,
   type FilesOnCloudsHandle,
 } from './components/FilesOnClouds';
@@ -50,7 +59,31 @@ export {
   BulutDepolamaKarti,
 } from './pages/BulutDepolamaKarti';
 export {
+  FileImportPage,
+  ExcelImportPage,
+  ExcelImportModal,
+  FileImportModal,
+  openExcelInNewTab,
+  FILE_FILTER_PRESETS,
+  type FileImportPageProps,
+  type ExcelImportPageProps,
+  type ExcelImportModalProps,
+} from './pages/FileImportPage';
+export {
+  FileExportPage,
+  ExcelExportPage,
+  ExcelExportModal,
+  FileExportModal,
+  type FileExportPageProps,
+  type ExcelExportPageProps,
+  type FileExportModalProps,
+  type FileExportResult,
+} from './pages/FileExportPage';
+export {
   createStorageModule,
+  createFileManagerModule,
   BulutDepolamaModule,
-  BulutDepolamaModule as default,
+  FileManagerModule,
+  DosyaYonetimiModule,
+  FileManagerModule as default,
 } from './createStorageModule';

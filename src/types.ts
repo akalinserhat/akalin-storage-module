@@ -1,6 +1,6 @@
 /**
- * @akalin/storage_module - Tip Tanımları (types.ts)
- * Bulut Depolama Modülü Veri Transfer Nesneleri (DTO) ve Servis Arayüzleri
+ * @akalin/file_manager_module - Tip Tanımları (types.ts)
+ * Yerel & Bulut Dosya Al / Kaydet / Yönet Modülü Veri Transfer Nesneleri (DTO) ve Servis Arayüzleri
  */
 
 export type StorageProviderType = 'google' | 'onedrive' | 'dropbox' | string;
@@ -97,7 +97,67 @@ export interface SettingKeyValueDTO {
 }
 
 /**
- * Bağımsız Depolama Servis Adaptörü Sözleşmesi (Adapter Interface)
+ * Dosya İçe Aktarma (FileImportPage) ve Dışa Aktarma (FileExportPage) Ortak Tipleri
+ */
+export type FileFilterCategory =
+  | 'all'
+  | 'excel'
+  | 'pdf'
+  | 'image'
+  | 'word'
+  | 'csv'
+  | 'json'
+  | 'xml'
+  | 'archive';
+
+export type FileSelectionMode = 'single' | 'multiple';
+
+export interface ImportedFileItem {
+  id: string;
+  name: string;
+  size: number;
+  extension: string;
+  mimeType?: string;
+  source: 'local' | 'cloud';
+  localFile?: File;
+  cloudFile?: CloudFileItem;
+  arrayBuffer?: ArrayBuffer;
+}
+
+export interface ExcelColumnDef {
+  key: string;
+  label: string;
+  type: 'column' | 'select' | 'date';
+  expectedType?: 'number' | 'string' | 'date';
+  options?: { value: string; label: string }[];
+  defaultValue?: any;
+  visibleIf?: { key: string; value: any };
+  required?: boolean;
+}
+
+export interface ExcelSheet {
+  name: string;
+  isActive: boolean;
+  data: any[][];
+  maxCols: number;
+  validColumns: number[];
+  mapping: Record<string, any>;
+}
+
+export type ExportFormatType = 'xlsx' | 'csv' | 'json' | 'xml' | 'txt' | 'html';
+
+export type ExportDestinationType = 'local' | 'cloud' | 'both';
+
+export interface ExportColumnDef {
+  key: string;
+  label: string;
+  selected?: boolean;
+  width?: number;
+  format?: (value: any, row: any) => any;
+}
+
+/**
+ * Bağımsız Dosya ve Depolama Servis Adaptörü Sözleşmesi (Adapter Interface)
  */
 export interface IStorageServiceAdapter {
   getIntegrations(): Promise<StorageIntegrationDTO[]>;
@@ -112,6 +172,7 @@ export interface IStorageServiceAdapter {
     onProgress?: (percent: number, loaded: number, total: number) => void,
     signal?: AbortSignal
   ): Promise<{ dosya: CloudFileItem; mesaj?: string }>;
+  downloadFile?(id: number): Promise<ArrayBuffer>;
   renameFile(id: number, yeniAd: string): Promise<CloudFileItem>;
   deleteFile(id: number): Promise<void>;
   getSettingByKey?(key: string): Promise<SettingKeyValueDTO | null>;
@@ -141,3 +202,5 @@ export interface CreateStorageModuleOptions {
   showAlert?: ShowAlertFn;
   isAdmin?: boolean;
 }
+
+export type CreateFileManagerModuleOptions = CreateStorageModuleOptions;

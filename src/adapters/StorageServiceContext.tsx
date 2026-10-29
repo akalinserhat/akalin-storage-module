@@ -1,5 +1,5 @@
 /**
- * @akalin/storage_module - Servis Adaptörleri ve React Context (StorageServiceContext.tsx)
+ * @akalin/file_manager_module - Servis Adaptörleri ve React Context (StorageServiceContext.tsx)
  * REST ve LocalStorage adaptörlerini içerir; monolitik bağımlılıkları tamamen soyutlar.
  */
 
@@ -214,6 +214,22 @@ export function createRestStorageAdapter(options?: {
         signal,
       });
       return await handleJson(res);
+    },
+
+    async downloadFile(id: number): Promise<ArrayBuffer> {
+      const res = await doFetch(`${apiPrefix}/Download/${id}`, {
+        method: 'GET',
+        headers: getHeaders({ Accept: '*/*' }),
+      });
+      if (!res.ok) {
+        let errText = `HTTP Error ${res.status}`;
+        try {
+          const errJson = await res.json();
+          errText = errJson.message || errJson.mesaj || JSON.stringify(errJson);
+        } catch {}
+        throw new Error(errText);
+      }
+      return await res.arrayBuffer();
     },
 
     async renameFile(id: number, yeniAd: string): Promise<CloudFileItem> {
@@ -473,3 +489,8 @@ export function useStorageModule(): StorageModuleContextValue {
     },
   };
 }
+
+export const useFileManagerModule = useStorageModule;
+export const FileManagerModuleProvider = StorageModuleProvider;
+export const createRestFileManagerAdapter = createRestStorageAdapter;
+export const createLocalStorageFileManagerAdapter = createLocalStorageStorageAdapter;

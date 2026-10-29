@@ -1,10 +1,11 @@
 /**
- * @akalin/storage_module - Modül Fabrikası (createStorageModule.tsx)
+ * @akalin/file_manager_module - Modül Fabrikası (createStorageModule.tsx)
+ * Yerel & Bulut Dosya Al / Kaydet / Yönet (Local & Cloud File Import, Export & Storage Manager).
  * @akalin/module_core ModuleRegistry ile tam uyumlu IModuleDefinition üretir.
  */
 
 import React from 'react';
-import { Cloud, HardDrive, Settings } from 'lucide-react';
+import { Cloud, HardDrive, Settings, FolderUp, Download } from 'lucide-react';
 import type { IModuleDefinition } from '@akalin/module_core';
 import { registerCloudFilesComponent, registerUploadToCloudComponent } from '@akalin/ui';
 import { CreateStorageModuleOptions } from './types';
@@ -20,6 +21,8 @@ import BulutDepolamaAyarlariComponent from './components/BulutDepolamaAyarlari';
 import BulutDosyalariPageComponent from './pages/BulutDosyalariPage';
 import BulutDepolamaAdminAyarlariComponent from './pages/BulutDepolamaAdminAyarlari';
 import BulutDepolamaKartiComponent from './pages/BulutDepolamaKarti';
+import FileImportPageComponent from './pages/FileImportPage';
+import FileExportPageComponent from './pages/FileExportPage';
 import { ProviderLogo } from './logos/ProviderLogo';
 
 export function createStorageModule(options?: CreateStorageModuleOptions): IModuleDefinition {
@@ -80,6 +83,18 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
     </StorageModuleProvider>
   );
 
+  const ConnectedFileImportPage: React.FC<any> = (props) => (
+    <StorageModuleProvider adapter={adapter} appName={appName} baseRoute={baseRoute} showAlert={options?.showAlert}>
+      <FileImportPageComponent asPage={true} isModal={false} allowFilterChange={true} {...props} />
+    </StorageModuleProvider>
+  );
+
+  const ConnectedFileExportPage: React.FC<any> = (props) => (
+    <StorageModuleProvider adapter={adapter} appName={appName} baseRoute={baseRoute} showAlert={options?.showAlert}>
+      <FileExportPageComponent asPage={true} isModal={false} {...props} />
+    </StorageModuleProvider>
+  );
+
   const ConnectedBulutDepolamaAyarlariPage: React.FC<any> = (props) => (
     <StorageModuleProvider
       adapter={adapter}
@@ -115,11 +130,11 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
 
   return {
     id,
-    title: 'Bulut Depolama',
-    name: 'Bulut Depolama',
+    title: 'Yerel & Bulut Dosya Yönetimi',
+    name: 'Yerel & Bulut Dosya Al / Kaydet / Yönet',
     description:
-      'Google Drive, Microsoft OneDrive ve Dropbox entegrasyonu ile tüm fatura, dekont ve sözleşmelerinizi güvenle depolayın ve yönetin.',
-    version: '1.0.0',
+      'Yerel cihaz ve Google Drive, Microsoft OneDrive, Dropbox entegrasyonu ile dosya içe aktarma (Import), dışa aktarma (Export) ve bulut evrak yönetimi.',
+    version: '1.1.0',
     permissionPrefix: 'storage',
     icon: React.createElement(Cloud, { size: 20 }),
     iconName: 'Cloud',
@@ -131,6 +146,16 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
         path: '/araclar/bulut-dosyalari',
         element: React.createElement(ConnectedBulutDosyalariPage),
         title: 'Bulut Dosyaları',
+      },
+      {
+        path: '/araclar/dosya-al',
+        element: React.createElement(ConnectedFileImportPage),
+        title: 'Dosya İçeri Aktar (Import)',
+      },
+      {
+        path: '/araclar/dosya-kaydet',
+        element: React.createElement(ConnectedFileExportPage),
+        title: 'Dosya Kaydet / Dışa Aktar (Export)',
       },
       {
         path: '/ayarlar/bulut-depolama',
@@ -161,7 +186,7 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
     menuItems: [
       {
         id: 'bulut-depolama-group',
-        label: 'Bulut Depolama',
+        label: 'Dosya & Bulut Yönetimi',
         icon: React.createElement(Cloud, { size: 18 }),
         children: [
           {
@@ -169,6 +194,18 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
             label: 'Bulut Dosyaları',
             path: '/araclar/bulut-dosyalari',
             icon: React.createElement(HardDrive, { size: 16 }),
+          },
+          {
+            id: 'dosya-al-menu',
+            label: 'Dosya Al (Import)',
+            path: '/araclar/dosya-al',
+            icon: React.createElement(FolderUp, { size: 16 }),
+          },
+          {
+            id: 'dosya-kaydet-menu',
+            label: 'Dosya Kaydet (Export)',
+            path: '/araclar/dosya-kaydet',
+            icon: React.createElement(Download, { size: 16 }),
           },
           {
             id: 'bulut-ayarlari-menu',
@@ -202,9 +239,19 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
       {
         id: 'bulut-depolama-islem',
         category: 'islem',
-        titleKey: 'Bulut Depolama İşlemleri',
+        titleKey: 'Dosya ve Bulut Depolama İşlemleri',
         useStandardCrud: false,
         customActions: [
+          {
+            action: 'import',
+            labelKey: 'Dosya İçeri Aktarma (Import)',
+            description: 'Yerel cihazdan veya buluttan dosya içeri aktarma yetkisi.',
+          },
+          {
+            action: 'export',
+            labelKey: 'Dosya Dışa Aktarma (Export)',
+            description: 'Verileri ve belgeleri yerel cihaza veya buluta kaydetme yetkisi.',
+          },
           {
             action: 'upload',
             labelKey: 'Buluta Dosya Yükleme',
@@ -234,37 +281,53 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
         key: 'storage.view',
         name: 'Bulut Dosyalarını Görüntüleme',
         description: 'Bulut sağlayıcılarındaki dosya ve klasörleri listeleme yetkisi.',
-        group: 'Bulut Depolama',
+        group: 'Dosya & Bulut Yönetimi',
+      },
+      {
+        key: 'storage.import',
+        name: 'Dosya İçeri Aktarma (Import)',
+        description: 'Yerel veya bulut kaynaklarından dosya ve Excel verisi içeri aktarma yetkisi.',
+        group: 'Dosya & Bulut Yönetimi',
+      },
+      {
+        key: 'storage.export',
+        name: 'Dosya Dışa Aktarma (Export)',
+        description: 'Tablo ve belgeleri yerel diske veya buluta dışa aktarma yetkisi.',
+        group: 'Dosya & Bulut Yönetimi',
       },
       {
         key: 'storage.upload',
         name: 'Buluta Dosya Yükleme',
         description: 'Bulut depolamaya dosya yükleme yetkisi.',
-        group: 'Bulut Depolama',
+        group: 'Dosya & Bulut Yönetimi',
       },
       {
         key: 'storage.delete',
         name: 'Bulut Dosyası Silme',
         description: 'Bulut depolamadan dosya silme yetkisi.',
-        group: 'Bulut Depolama',
+        group: 'Dosya & Bulut Yönetimi',
         danger: true,
       },
       {
         key: 'storage.rename',
         name: 'Bulut Dosyası Yeniden Adlandırma',
         description: 'Bulut depolamadaki dosyaların adını güncelleme yetkisi.',
-        group: 'Bulut Depolama',
+        group: 'Dosya & Bulut Yönetimi',
       },
       {
         key: 'storage.settings',
         name: 'Bulut Depolama Ayarları',
         description: 'Bulut sağlayıcı bağlantı ve OAuth API ayarlarını yönetme yetkisi.',
-        group: 'Bulut Depolama',
+        group: 'Dosya & Bulut Yönetimi',
       },
     ],
     components: {
       FilesOnClouds: FilesOnCloudsComponent,
       UploadToCloud: UploadToCloudComponent,
+      FileImportPage: FileImportPageComponent,
+      ExcelImportPage: FileImportPageComponent,
+      FileExportPage: FileExportPageComponent,
+      ExcelExportPage: FileExportPageComponent,
       BulutDepolamaAyarlari: BulutDepolamaAyarlariComponent,
       BulutDosyalariPage: BulutDosyalariPageComponent,
       BulutDepolamaAdminAyarlari: BulutDepolamaAdminAyarlariComponent,
@@ -272,23 +335,26 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
       ProviderLogo,
     },
     promotion: {
-      title: 'Bulut Depolama & Evrak Yönetimi Modülü',
-      subtitle: 'Google Drive, OneDrive ve Dropbox entegrasyonu ile tüm fatura, dekont ve sözleşmeleriniz güvende.',
+      title: 'Yerel & Bulut Dosya Al / Kaydet / Yönet Modülü',
+      subtitle: 'Google Drive, OneDrive ve Dropbox entegrasyonu ile tüm dosya aktarım ve arşiv süreçleriniz tek merkezde.',
       description:
-        'Belgelerinizi, fatura PDF\'lerinizi ve cari sözleşmelerinizi tek tıkla buluta yükleyin, belgelere bağlayın ve sınırsız arşivleyin.',
+        'Excel ve belge dosyalarınızı filtreleyerek tekli veya çoklu içeri aktarın, raporlarınızı yerel diske veya bulut klasörlerinize kaydedin.',
       badge: 'En Çok Tercih Edilen',
       buttonText: 'Paketi İncele & Satın Al',
       purchaseUrl: '/abonelik/moduller/MOD_BULUT_DEPOLAMA',
       icon: 'Cloud',
       benefits: [
+        'Filtreli ve Tekli/Çoklu Dosya İçeri Aktarma (FileImportPage)',
+        'Yerel Cihaza ve Bulut Klasörüne Dosya Kaydetme (FileExportPage)',
         'Google Drive, Microsoft OneDrive ve Dropbox doğrudan entegrasyonu',
         'Fatura, sipariş ve cari kartlara tek tıkla evrak bağlama',
-        'Otomatik klasörleme ve belge türüne göre arşivleme',
-        'Şirket içi yetkilendirilmiş güvenli dosya paylaşımı',
       ],
     },
   };
 }
 
+export const createFileManagerModule = createStorageModule;
 export const BulutDepolamaModule = createStorageModule();
-export default BulutDepolamaModule;
+export const FileManagerModule = BulutDepolamaModule;
+export const DosyaYonetimiModule = BulutDepolamaModule;
+export default FileManagerModule;
