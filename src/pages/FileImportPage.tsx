@@ -568,8 +568,12 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     setIsDragging(false);
     setIsImporting(false);
     if (isImportRoute) {
+      const returnRoute = (location.state as any)?.returnRoute;
       const parentPath = location.pathname.replace(/\/(excel-import|file-import|dosya-al)$/, '');
-      navigate(parentPath || '/', {
+      const targetBack =
+        returnRoute ||
+        (parentPath && parentPath !== '/araclar' ? parentPath : '/');
+      navigate(targetBack, {
         state: {
           ...(location.state as any),
         },
@@ -1044,15 +1048,16 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   };
 
   // Seçili yerel dosyaları bulut depolamaya yükleme yardımcısı
-  const uploadLocalFilesToCloudIfEnabled = async () => {
-    if (!isBulutActive || !sendToCloud) return;
+  const uploadLocalFilesToCloudIfEnabled = async (): Promise<CloudFileItem[]> => {
+    const uploadedCloudFiles: CloudFileItem[] = [];
+    if (!isBulutActive || !sendToCloud) return uploadedCloudFiles;
     const localItems = selectedFiles.filter((f) => f.source === 'local' && f.localFile);
-    if (localItems.length === 0) return;
+    if (localItems.length === 0) return uploadedCloudFiles;
 
     try {
       for (const item of localItems) {
         if (!item.localFile) continue;
-        await adapter.uploadFile({
+        const uploadRes = await adapter.uploadFile({
           dosya: item.localFile,
           provider: 'google',
           belgeTuru: effectiveDocumentType,
@@ -1060,6 +1065,10 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
           belgeGuid: effectiveDocumentGuid,
           belgeNo: effectiveDocumentNo,
         });
+        if (uploadRes?.dosya) {
+          item.cloudFile = uploadRes.dosya;
+          uploadedCloudFiles.push(uploadRes.dosya);
+        }
       }
       toast.success(t('ExcelImport_cloudUploadSuccess', 'Dosya(lar) bulut depolamaya başarıyla kaydedildi.'));
     } catch (cloudErr) {
@@ -1068,6 +1077,98 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         t('ExcelImport_cloudUploadError', 'Dosya içeri aktarıldı ancak bulut depolamaya yüklenirken bir hata oluştu.')
       );
     }
+    return uploadedCloudFiles;
+  };
+
+  // Yapay Zeka Görev Akışı (Flowchart FORM_AC) için aktarılan dosya özetini ve metnini hazırlayıp olay fırlatan yardımcı
+  const notifyAiAssistantOnFileImport = async (items: ImportedFileItem[]) => {
+    if (typeof window === 'undefined' || typeof sessionStorage === 'undefined') return;
+    const waitingRaw = sessionStorage.getItem('webakus_ai_waiting_entity');
+    const fromAiChat = Boolean((location.state as any)?.fromAiChat);
+    if (!waitingRaw && !fromAiChat) return;
+
+    let waitingMeta: any = null;
+    if (waitingRaw) {
+      try {
+        waitingMeta = JSON.parse(waitingRaw);
+      } catch {
+        // ignore
+      }
+      sessionStorage.removeItem('webakus_ai_waiting_entity');
+    }
+
+    const importedFiles: Array<{
+      dosyaAdi: string;
+      uzanti: string;
+      boyut: number;
+      kaynak: 'local' | 'cloud';
+      bulutDosyaId?: number | string;
+      metinIcerigi?: string;
+    }> = [];
+
+    for (const item of items) {
+      const cloudId = item.cloudFile?.id || (item.cloudFile as any)?.Id;
+      let extractedText = '';
+
+      try {
+        if (['txt', 'md', 'csv', 'json', 'xml'].includes(item.extension) && item.arrayBuffer) {
+          extractedText = new TextDecoder('utf-8').decode(item.arrayBuffer).trim();
+        } else if (['xlsx', 'xls', 'ods'].includes(item.extension) && item.arrayBuffer) {
+          const wb = XLSX.read(new Uint8Array(item.arrayBuffer), { type: 'array', cellDates: true });
+          const sheetTexts: string[] = [];
+          for (const sName of wb.SheetNames) {
+            const ws = wb.Sheets[sName];
+            const csv = XLSX.utils.sheet_to_csv(ws, { blankrows: false });
+            if (csv && csv.trim()) {
+              sheetTexts.push(`[Sayfa: ${sName}]\n${csv.trim()}`);
+            }
+          }
+          extractedText = sheetTexts.join('\n\n');
+        } else if (item.localFile && !cloudId) {
+          const formData = new FormData();
+          formData.append('dosya', item.localFile);
+          const res = await axios.post('/api/AiChat/dosya-metin-cikar', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          if (res.data?.basarili && res.data?.metin) {
+            extractedText = String(res.data.metin).trim();
+          }
+        }
+      } catch (err) {
+        console.warn('AI file text extraction warning:', err);
+      }
+
+      importedFiles.push({
+        dosyaAdi: item.name,
+        uzanti: item.extension,
+        boyut: item.size,
+        kaynak: item.source,
+        bulutDosyaId: cloudId,
+        metinIcerigi: extractedText || undefined,
+      });
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('ai-entity-updated', {
+        detail: {
+          saved: true,
+          entityType: waitingMeta?.entityType || 'dosya-ice-aktar-karti',
+          entityLabel: waitingMeta?.entityLabel || t('FileImport_title', 'Dosya İçeri Aktar'),
+          workflowId: waitingMeta?.workflowId,
+          workflowTitle: waitingMeta?.workflowTitle,
+          workflowPrompt: waitingMeta?.workflowPrompt,
+          nodeId: waitingMeta?.nodeId,
+          nodePrompt: waitingMeta?.nodePrompt,
+          kayitSonrasiTeyitEt: waitingMeta?.kayitSonrasiTeyitEt,
+          route: location.pathname,
+          importedFiles,
+          savedData: {
+            dosyaSayisi: items.length,
+            dosyalar: items.map((f) => f.name).join(', '),
+          },
+        },
+      })
+    );
   };
 
   // İçeri Aktarma (Kaydet / Aktar) İşlemi
@@ -1081,6 +1182,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     if (!isExcelMappingMode) {
       setIsImporting(true);
       await uploadLocalFilesToCloudIfEnabled();
+      await notifyAiAssistantOnFileImport(selectedFiles);
       setIsImporting(false);
 
       if (onFilesImported) {
@@ -1213,6 +1315,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
     setIsImporting(true);
     await uploadLocalFilesToCloudIfEnabled();
+    await notifyAiAssistantOnFileImport(selectedFiles);
     setIsImporting(false);
 
     if (onImport) {
