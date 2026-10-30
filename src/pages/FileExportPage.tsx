@@ -16,7 +16,6 @@ import {
   Download,
   Cloud,
   HardDrive,
-  FileSpreadsheet,
   FolderPlus,
   CheckCircle2,
   Circle,

@@ -1458,6 +1458,14 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     t,
   ]);
 
+  const selectedCloudFileIds = useMemo(
+    () =>
+      selectedFiles
+        .filter((f) => f.source === 'cloud' && f.cloudFile?.id)
+        .map((f) => f.cloudFile!.id),
+    [selectedFiles]
+  );
+
   if (isModalMode && !isEffectivelyOpen) {
     return null;
   }
@@ -1490,14 +1498,6 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     effectiveAllowedExtensions.length > 0
       ? effectiveAllowedExtensions.map((e) => `.${e}`).join(', ')
       : t('FileImport_allFormatsAllowed', 'Tüm dosya formatları');
-
-  const selectedCloudFileIds = useMemo(
-    () =>
-      selectedFiles
-        .filter((f) => f.source === 'cloud' && f.cloudFile?.id)
-        .map((f) => f.cloudFile!.id),
-    [selectedFiles]
-  );
 
   // Dosya seçimi ekranını mı yoksa Excel eşleştirme ekranını mı göstereceğiz?
   const showExcelMappingView = isExcelMappingMode && selectedFiles.length > 0 && sheets.length > 0;
@@ -1940,7 +1940,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     const contentArea =
       typeof document !== 'undefined' ? (document.querySelector('.content-area') as HTMLElement) : null;
     if (contentArea && getComputedStyle(contentArea).position === 'static') {
-      contentArea.style.position = 'relative';
+      contentArea.classList.add('relative');
     }
 
     const modalElement = <div className="excel-import-modal-wrapper">{cardContent}</div>;

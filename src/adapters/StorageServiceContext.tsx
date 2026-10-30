@@ -3,7 +3,7 @@
  * REST ve LocalStorage adaptörlerini içerir; monolitik bağımlılıkları tamamen soyutlar.
  */
 
-import React, { createContext, useContext, ReactNode, useState, useCallback } from 'react';
+import React, { createContext, useContext, ReactNode, useCallback } from 'react';
 import {
   CloudFileItem,
   CloudFolderItem,
@@ -11,7 +11,6 @@ import {
   GetFilesParams,
   GetFoldersParams,
   IStorageServiceAdapter,
-  RenameFileParams,
   SettingKeyValueDTO,
   ShowAlertFn,
   StorageIntegrationDTO,
