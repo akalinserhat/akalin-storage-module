@@ -101,10 +101,14 @@ export interface SettingKeyValueDTO {
  */
 export type FileFilterCategory =
   | 'all'
-  | 'excel'
   | 'pdf'
-  | 'image'
   | 'word'
+  | 'txt'
+  | 'image'
+  | 'png'
+  | 'jpg'
+  | 'webp_svg'
+  | 'excel'
   | 'csv'
   | 'json'
   | 'xml'

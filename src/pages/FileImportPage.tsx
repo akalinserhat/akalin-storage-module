@@ -36,10 +36,12 @@ import * as XLSX from 'xlsx';
 import axios from 'axios';
 import {
   BaseCardPage,
+  BaseDropdownSecici,
   BaseSwitch,
   TabLayout,
   DateInput,
   type ActionMenuItem,
+  type DropdownOption,
   useModulGate,
 } from '@akalin/ui';
 import FilesOnClouds, {
@@ -64,65 +66,180 @@ import {
 
 export type { ExcelColumnDef, ExcelSheet, FileFilterCategory, FileSelectionMode, ImportedFileItem };
 
-export const FILE_FILTER_PRESETS: Record<
-  FileFilterCategory,
-  { extensions: string[]; accept: string; labelKey: string; defaultLabel: string }
-> = {
+export interface FileFilterPresetItem {
+  extensions: string[];
+  accept: string;
+  labelKey: string;
+  defaultLabel: string;
+  groupKey?: string;
+  defaultGroupLabel?: string;
+  isAllOption?: boolean;
+}
+
+export const FILE_FILTER_PRESETS: Record<FileFilterCategory, FileFilterPresetItem> = {
   all: {
     extensions: [],
     accept: '*/*',
     labelKey: 'FileImport_filterAll',
     defaultLabel: 'Tüm Dosyalar',
-  },
-  excel: {
-    extensions: ['xlsx', 'xls', 'csv', 'ods'],
-    accept: '.xlsx,.xls,.csv,.ods',
-    labelKey: 'FileImport_filterExcel',
-    defaultLabel: 'Excel & Tablo (.xlsx, .xls, .csv)',
-  },
-  csv: {
-    extensions: ['csv'],
-    accept: '.csv',
-    labelKey: 'FileImport_filterCsv',
-    defaultLabel: 'CSV (.csv)',
+    isAllOption: true,
   },
   pdf: {
     extensions: ['pdf'],
     accept: '.pdf',
     labelKey: 'FileImport_filterPdf',
     defaultLabel: 'PDF Belgeleri (.pdf)',
+    groupKey: 'FileImport_groupTextDocs',
+    defaultGroupLabel: 'Text Dokümanlar',
+  },
+  word: {
+    extensions: ['doc', 'docx', 'rtf', 'odt'],
+    accept: '.doc,.docx,.rtf,.odt',
+    labelKey: 'FileImport_filterWord',
+    defaultLabel: 'Word Dokümanları (.docx, .doc, .rtf, .odt)',
+    groupKey: 'FileImport_groupTextDocs',
+    defaultGroupLabel: 'Text Dokümanlar',
+  },
+  txt: {
+    extensions: ['txt', 'md'],
+    accept: '.txt,.md',
+    labelKey: 'FileImport_filterTxt',
+    defaultLabel: 'Metin Dokümanları (.txt, .md)',
+    groupKey: 'FileImport_groupTextDocs',
+    defaultGroupLabel: 'Text Dokümanlar',
+  },
+  png: {
+    extensions: ['png'],
+    accept: '.png',
+    labelKey: 'FileImport_filterPng',
+    defaultLabel: 'PNG Görselleri (.png)',
+    groupKey: 'FileImport_groupImages',
+    defaultGroupLabel: 'Resimler',
+  },
+  jpg: {
+    extensions: ['jpg', 'jpeg'],
+    accept: '.jpg,.jpeg',
+    labelKey: 'FileImport_filterJpg',
+    defaultLabel: 'JPEG / JPG Görselleri (.jpg, .jpeg)',
+    groupKey: 'FileImport_groupImages',
+    defaultGroupLabel: 'Resimler',
+  },
+  webp_svg: {
+    extensions: ['webp', 'svg', 'gif', 'bmp'],
+    accept: '.webp,.svg,.gif,.bmp',
+    labelKey: 'FileImport_filterWebpSvg',
+    defaultLabel: 'WebP, SVG & GIF Görselleri (.webp, .svg, .gif, .bmp)',
+    groupKey: 'FileImport_groupImages',
+    defaultGroupLabel: 'Resimler',
   },
   image: {
     extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'],
     accept: '.png,.jpg,.jpeg,.webp,.gif,.svg,.bmp',
     labelKey: 'FileImport_filterImage',
-    defaultLabel: 'Görseller (.png, .jpg, .webp)',
+    defaultLabel: 'Tüm Resimler (.png, .jpg, .webp, .svg, .gif)',
+    groupKey: 'FileImport_groupImages',
+    defaultGroupLabel: 'Resimler',
   },
-  word: {
-    extensions: ['doc', 'docx', 'rtf', 'txt', 'odt'],
-    accept: '.doc,.docx,.rtf,.txt,.odt',
-    labelKey: 'FileImport_filterWord',
-    defaultLabel: 'Metin & Word (.docx, .doc, .txt)',
+  excel: {
+    extensions: ['xlsx', 'xls', 'ods'],
+    accept: '.xlsx,.xls,.ods',
+    labelKey: 'FileImport_filterExcel',
+    defaultLabel: 'Excel & Tablo (.xlsx, .xls, .ods)',
+    groupKey: 'FileImport_groupSpreadsheets',
+    defaultGroupLabel: 'Tablo & Veri Dokümanları',
+  },
+  csv: {
+    extensions: ['csv'],
+    accept: '.csv',
+    labelKey: 'FileImport_filterCsv',
+    defaultLabel: 'CSV (.csv)',
+    groupKey: 'FileImport_groupSpreadsheets',
+    defaultGroupLabel: 'Tablo & Veri Dokümanları',
   },
   json: {
     extensions: ['json'],
     accept: '.json',
     labelKey: 'FileImport_filterJson',
     defaultLabel: 'JSON (.json)',
+    groupKey: 'FileImport_groupSpreadsheets',
+    defaultGroupLabel: 'Tablo & Veri Dokümanları',
   },
   xml: {
     extensions: ['xml'],
     accept: '.xml',
     labelKey: 'FileImport_filterXml',
     defaultLabel: 'XML (.xml)',
+    groupKey: 'FileImport_groupSpreadsheets',
+    defaultGroupLabel: 'Tablo & Veri Dokümanları',
   },
   archive: {
     extensions: ['zip', 'rar', '7z', 'tar', 'gz'],
     accept: '.zip,.rar,.7z,.tar,.gz',
     labelKey: 'FileImport_filterArchive',
-    defaultLabel: 'Arşiv (.zip, .rar)',
+    defaultLabel: 'Arşiv (.zip, .rar, .7z)',
+    groupKey: 'FileImport_groupArchives',
+    defaultGroupLabel: 'Arşiv Dosyaları',
   },
 };
+
+export function resolveFileFilterExtensions(
+  selection: FileFilterCategory | string | string[] | undefined
+): string[] {
+  if (!selection) return [];
+  const rawArray = Array.isArray(selection) ? selection : [selection];
+  if (rawArray.length === 0 || rawArray.includes('all')) return [];
+
+  const extSet = new Set<string>();
+  rawArray.forEach((item) => {
+    const key = String(item || '').trim().toLowerCase();
+    if (!key || key === 'all') return;
+    const preset = (FILE_FILTER_PRESETS as Record<string, FileFilterPresetItem>)[key];
+    if (preset && preset.extensions.length > 0) {
+      preset.extensions.forEach((ext) => extSet.add(ext.replace(/^\./, '').toLowerCase()));
+    } else {
+      extSet.add(key.replace(/^\./, '').toLowerCase());
+    }
+  });
+
+  return Array.from(extSet);
+}
+
+export function buildGroupedFileFilterOptions(
+  t: (key: string, fallback: string) => string
+): DropdownOption[] {
+  const orderedKeys: FileFilterCategory[] = [
+    'all',
+    'pdf',
+    'word',
+    'txt',
+    'png',
+    'jpg',
+    'webp_svg',
+    'excel',
+    'csv',
+    'json',
+    'xml',
+    'archive',
+  ];
+
+  return orderedKeys.map((catKey) => {
+    const preset = FILE_FILTER_PRESETS[catKey];
+    const labelText = t(preset.labelKey, preset.defaultLabel);
+    const groupText =
+      preset.groupKey && preset.defaultGroupLabel
+        ? t(preset.groupKey, preset.defaultGroupLabel)
+        : undefined;
+
+    return {
+      id: catKey,
+      value: catKey,
+      label: labelText,
+      group: groupText,
+      isAllOption: Boolean(preset.isAllOption),
+      searchText: `${groupText ? `${groupText} ` : ''}${labelText} ${preset.extensions.join(' ')}`,
+    };
+  });
+}
 
 export interface FileImportPageProps {
   isOpen?: boolean;
@@ -534,31 +651,66 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       ? Boolean(externalNodeSettings.allowFilterChange)
       : allowFilterChange;
 
-  // Başlangıç dosya filtresi
-  const initialFilterCategory: FileFilterCategory = useMemo(() => {
-    if (externalNodeSettings.fileTypeFilter) return externalNodeSettings.fileTypeFilter;
-    if (typeof fileTypeFilter === 'string') return fileTypeFilter;
-    if (isExcelMappingMode) return 'excel';
-    return 'all';
-  }, [externalNodeSettings.fileTypeFilter, fileTypeFilter, isExcelMappingMode]);
+  // Başlangıç dosya filtresi (Çoklu seçim destekli)
+  const initialFilterSelection = useMemo<string[]>(() => {
+    if (
+      Array.isArray(externalNodeSettings.fileTypeFilters) &&
+      externalNodeSettings.fileTypeFilters.length > 0
+    ) {
+      return externalNodeSettings.fileTypeFilters.map(String);
+    }
+    if (externalNodeSettings.fileTypeFilter) {
+      return Array.isArray(externalNodeSettings.fileTypeFilter)
+        ? externalNodeSettings.fileTypeFilter.map(String)
+        : [String(externalNodeSettings.fileTypeFilter)];
+    }
+    if (Array.isArray(fileTypeFilter) && fileTypeFilter.length > 0) {
+      return fileTypeFilter.map(String);
+    }
+    if (typeof fileTypeFilter === 'string' && fileTypeFilter) {
+      return [fileTypeFilter];
+    }
+    if (isExcelMappingMode) return ['excel'];
+    return ['all'];
+  }, [
+    externalNodeSettings.fileTypeFilters,
+    externalNodeSettings.fileTypeFilter,
+    fileTypeFilter,
+    isExcelMappingMode,
+  ]);
 
-  const [activeFilterCategory, setActiveFilterCategory] = useState<FileFilterCategory>(initialFilterCategory);
+  const [activeFilterSelection, setActiveFilterSelection] = useState<string[]>(initialFilterSelection);
 
   useEffect(() => {
-    setActiveFilterCategory(initialFilterCategory);
-  }, [initialFilterCategory]);
+    setActiveFilterSelection(initialFilterSelection);
+  }, [initialFilterSelection]);
+
+  const groupedFilterOptions = useMemo<DropdownOption[]>(
+    () => buildGroupedFileFilterOptions(t),
+    [t]
+  );
 
   // Geçerli izin verilen dosya uzantıları
   const effectiveAllowedExtensions = useMemo<string[]>(() => {
     if (propAllowedExtensions && propAllowedExtensions.length > 0) {
       return propAllowedExtensions.map((e) => e.replace(/^\./, '').toLowerCase().trim());
     }
-    if (Array.isArray(fileTypeFilter) && fileTypeFilter.length > 0) {
-      return fileTypeFilter.map((e) => e.replace(/^\./, '').toLowerCase().trim());
+    if (
+      Array.isArray(externalNodeSettings.allowedExtensions) &&
+      externalNodeSettings.allowedExtensions.length > 0 &&
+      JSON.stringify(activeFilterSelection) === JSON.stringify(initialFilterSelection)
+    ) {
+      return externalNodeSettings.allowedExtensions.map((e) =>
+        e.replace(/^\./, '').toLowerCase().trim()
+      );
     }
-    const preset = FILE_FILTER_PRESETS[activeFilterCategory] || FILE_FILTER_PRESETS.all;
-    return preset.extensions;
-  }, [propAllowedExtensions, fileTypeFilter, activeFilterCategory]);
+    return resolveFileFilterExtensions(activeFilterSelection);
+  }, [
+    propAllowedExtensions,
+    externalNodeSettings.allowedExtensions,
+    activeFilterSelection,
+    initialFilterSelection,
+  ]);
 
   const acceptAttribute = useMemo<string>(() => {
     if (effectiveAllowedExtensions.length === 0) return '*/*';
@@ -1605,22 +1757,19 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
               {/* Kullanıcıya dosya tipi filtresi seçimi açıksa */}
               {effectiveAllowFilterChange && !isExcelMappingMode && (
-                <div className="flex items-center gap-8">
-                  <Filter size={15} className="text-secondary" />
-                  <select
-                    className="form-input text-13 py-6 px-12"
-                    value={activeFilterCategory}
-                    onChange={(e) => setActiveFilterCategory(e.target.value as FileFilterCategory)}
-                  >
-                    {(Object.keys(FILE_FILTER_PRESETS) as FileFilterCategory[]).map((catKey) => {
-                      const preset = FILE_FILTER_PRESETS[catKey];
-                      return (
-                        <option key={catKey} value={catKey}>
-                          {t(preset.labelKey, preset.defaultLabel)}
-                        </option>
-                      );
-                    })}
-                  </select>
+                <div className="flex items-center gap-8 min-w-260">
+                  <Filter size={15} className="text-secondary shrink-0" />
+                  <BaseDropdownSecici
+                    id="fileImportToolbarFilterSelect"
+                    options={groupedFilterOptions}
+                    multiple={true}
+                    clearable={true}
+                    value={activeFilterSelection}
+                    onChange={(nextVal) => {
+                      const nextArr = Array.isArray(nextVal) && nextVal.length > 0 ? nextVal.map(String) : ['all'];
+                      setActiveFilterSelection(nextArr);
+                    }}
+                  />
                 </div>
               )}
             </div>
@@ -1658,7 +1807,11 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
                     onDrop={handleDrop}
                   >
                     <div className="ai-file-dropzone-icon">
-                      {activeFilterCategory === 'excel' ? <FileSpreadsheet size={32} /> : <Files size={32} />}
+                      {activeFilterSelection.length === 1 && activeFilterSelection[0] === 'excel' ? (
+                        <FileSpreadsheet size={32} />
+                      ) : (
+                        <Files size={32} />
+                      )}
                     </div>
                     <span className="font-semibold text-15 text-primary mb-4">
                       {effectiveSelectionMode === 'multiple'

@@ -17,10 +17,18 @@ import {
   type DropdownOption,
 } from '@akalin/ui';
 import type { FileFilterCategory, FileSelectionMode } from '../types';
-import { FILE_FILTER_PRESETS } from './FileImportPage';
+import {
+  buildGroupedFileFilterOptions,
+  resolveFileFilterExtensions,
+} from './FileImportPage';
 
 export interface FileImportExternalSettingsValue {
-  fileTypeFilter?: FileFilterCategory;
+  /** Çoklu seçilen dosya tipi filtre anahtarları (örn: ['pdf', 'word', 'png'] veya ['all']) */
+  fileTypeFilters?: string[];
+  /** Tekil veya dizi dosya tipi filtresi (geriye dönük uyumluluk) */
+  fileTypeFilter?: FileFilterCategory | string[];
+  /** Seçilen filtrelerden türetilen izinli uzantılar dizisi */
+  allowedExtensions?: string[];
   selectionMode?: FileSelectionMode;
   allowFilterChange?: boolean;
   defaultSendToCloud?: boolean;
@@ -48,23 +56,51 @@ export const FileImportPagesettingsForExternal: React.FC<FileImportPagesettingsF
 }) => {
   const { t } = useTranslation();
 
-  const [formState, setFormState] = useState<FileImportExternalSettingsValue>(() => ({
-    fileTypeFilter: value?.fileTypeFilter || 'all',
-    selectionMode: value?.selectionMode || 'single',
-    allowFilterChange: value?.allowFilterChange !== false,
-    defaultSendToCloud: Boolean(value?.defaultSendToCloud),
-  }));
+  const [formState, setFormState] = useState<FileImportExternalSettingsValue>(() => {
+    const initialFilters: string[] =
+      Array.isArray(value?.fileTypeFilters) && value!.fileTypeFilters!.length > 0
+        ? value!.fileTypeFilters!.map(String)
+        : Array.isArray(value?.fileTypeFilter) && value!.fileTypeFilter!.length > 0
+          ? value!.fileTypeFilter!.map(String)
+          : typeof value?.fileTypeFilter === 'string' && value.fileTypeFilter
+            ? [value.fileTypeFilter]
+            : ['all'];
 
-  const filterOptions = useMemo<DropdownOption[]>(() => {
-    return (Object.keys(FILE_FILTER_PRESETS) as FileFilterCategory[]).map((catKey) => {
-      const preset = FILE_FILTER_PRESETS[catKey];
-      return {
-        id: catKey,
-        value: catKey,
-        label: t(preset.labelKey, preset.defaultLabel),
-      };
-    });
-  }, [t]);
+    return {
+      fileTypeFilters: initialFilters,
+      fileTypeFilter: initialFilters.length === 1 ? (initialFilters[0] as FileFilterCategory) : initialFilters,
+      allowedExtensions: resolveFileFilterExtensions(initialFilters),
+      selectionMode: value?.selectionMode || 'single',
+      allowFilterChange: value?.allowFilterChange !== false,
+      defaultSendToCloud: Boolean(value?.defaultSendToCloud),
+    };
+  });
+
+  const filterOptions = useMemo<DropdownOption[]>(
+    () => buildGroupedFileFilterOptions(t),
+    [t]
+  );
+
+  const selectedFilterValues = useMemo<string[]>(() => {
+    if (Array.isArray(formState.fileTypeFilters) && formState.fileTypeFilters.length > 0) {
+      return formState.fileTypeFilters;
+    }
+    if (Array.isArray(formState.fileTypeFilter) && formState.fileTypeFilter.length > 0) {
+      return formState.fileTypeFilter.map(String);
+    }
+    if (typeof formState.fileTypeFilter === 'string' && formState.fileTypeFilter) {
+      return [formState.fileTypeFilter];
+    }
+    return ['all'];
+  }, [formState.fileTypeFilters, formState.fileTypeFilter]);
+
+  const resolvedExtensionsPreview = useMemo<string>(() => {
+    const exts = resolveFileFilterExtensions(selectedFilterValues);
+    if (exts.length === 0) {
+      return t('FileImport_allFormatsAllowed', 'Tüm dosya formatları');
+    }
+    return exts.map((ext) => `.${ext}`).join(', ');
+  }, [selectedFilterValues, t]);
 
   const selectionModeOptions = useMemo<DropdownOption[]>(
     () => [
@@ -137,12 +173,28 @@ export const FileImportPagesettingsForExternal: React.FC<FileImportPagesettingsF
             <BaseDropdownSecici
               id="fileImportExtFilterSelect"
               options={filterOptions}
-              value={formState.fileTypeFilter || 'all'}
-              clearable={false}
-              onChange={(val) =>
-                handleFieldUpdate({ fileTypeFilter: (val as FileFilterCategory) || 'all' })
-              }
+              multiple={true}
+              clearable={true}
+              value={selectedFilterValues}
+              placeholder={t('FileImport_selectFileTypesPlaceholder', 'Dosya türlerini seçin...')}
+              onChange={(val) => {
+                const nextFilters =
+                  Array.isArray(val) && val.length > 0 ? val.map(String) : ['all'];
+                const nextExtensions = resolveFileFilterExtensions(nextFilters);
+                handleFieldUpdate({
+                  fileTypeFilters: nextFilters,
+                  fileTypeFilter:
+                    nextFilters.length === 1
+                      ? (nextFilters[0] as FileFilterCategory)
+                      : nextFilters,
+                  allowedExtensions: nextExtensions,
+                });
+              }}
             />
+            <span className="text-11 text-secondary">
+              {t('FileImport_allowedFormatsLabel', 'İzin verilen formatlar')}:{' '}
+              <strong className="text-primary">{resolvedExtensionsPreview}</strong>
+            </span>
           </div>
 
           <div className="form-group flex flex-col gap-6">
