@@ -57,6 +57,10 @@ import {
   FileSelectionMode,
   ImportedFileItem,
 } from '../types';
+import {
+  FileImportPagesettingsForExternal,
+  type FileImportExternalSettingsValue,
+} from './FileImportPagesettingsForExternal';
 
 export type { ExcelColumnDef, ExcelSheet, FileFilterCategory, FileSelectionMode, ImportedFileItem };
 
@@ -177,6 +181,10 @@ export interface FileImportPageProps {
   isModal?: boolean;
   asPage?: boolean;
   defaultSendToCloud?: boolean;
+  /** Sayfanın düğüm/harici bileşen tarafından çağrılabilecek [sayfaİsmi]settingsForExternal.tsx ayar sayfası var mı? */
+  hasExternalSettings?: boolean;
+  /** Harici ayar bileşeni referansı */
+  externalSettingsComponent?: React.ComponentType<any>;
 }
 
 // Geriye dönük uyumluluk için alias tipler
@@ -481,6 +489,8 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   isModal = true,
   asPage = false,
   defaultSendToCloud = true,
+  hasExternalSettings = true,
+  externalSettingsComponent = FileImportPagesettingsForExternal,
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -489,20 +499,48 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   const { isActive: modulGateActive } = useModulGate('MOD_BULUT_DEPOLAMA');
   const isBulutActive = Boolean(modulGateActive);
 
+  // Düğüm / harici çağrıdan gelen [sayfaİsmi]settingsForExternal ayarlarını oku
+  const externalNodeSettings = useMemo<FileImportExternalSettingsValue>(() => {
+    const stateSettings = (location.state as any)?.externalSettings || (location.state as any)?.hariciSayfaAyarlari;
+    if (stateSettings && typeof stateSettings === 'object') {
+      return stateSettings;
+    }
+    try {
+      const rawWaiting =
+        sessionStorage.getItem('webakus_ai_waiting_entity') ||
+        sessionStorage.getItem('ai_agent_waiting_form_data');
+      if (rawWaiting) {
+        const parsed = JSON.parse(rawWaiting);
+        if (parsed?.hariciSayfaAyarlari && typeof parsed.hariciSayfaAyarlari === 'object') {
+          return parsed.hariciSayfaAyarlari;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return {};
+  }, [location.state]);
+
   // Excel sütun eşleştirme modu aktif mi?
   const isExcelMappingMode = Boolean(columns && columns.length > 0);
 
-  // Seçim modu: Excel eşleştirme modunda her zaman 'single', aksi halde prop'a göre
+  // Seçim modu: Excel eşleştirme modunda her zaman 'single', aksi halde harici düğüm ayarı veya prop'a göre
   const effectiveSelectionMode: FileSelectionMode = isExcelMappingMode
     ? 'single'
-    : propSelectionMode || (multiple ? 'multiple' : 'single');
+    : externalNodeSettings.selectionMode || propSelectionMode || (multiple ? 'multiple' : 'single');
+
+  const effectiveAllowFilterChange =
+    externalNodeSettings.allowFilterChange !== undefined
+      ? Boolean(externalNodeSettings.allowFilterChange)
+      : allowFilterChange;
 
   // Başlangıç dosya filtresi
   const initialFilterCategory: FileFilterCategory = useMemo(() => {
+    if (externalNodeSettings.fileTypeFilter) return externalNodeSettings.fileTypeFilter;
     if (typeof fileTypeFilter === 'string') return fileTypeFilter;
     if (isExcelMappingMode) return 'excel';
     return 'all';
-  }, [fileTypeFilter, isExcelMappingMode]);
+  }, [externalNodeSettings.fileTypeFilter, fileTypeFilter, isExcelMappingMode]);
 
   const [activeFilterCategory, setActiveFilterCategory] = useState<FileFilterCategory>(initialFilterCategory);
 
@@ -552,7 +590,11 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   const [isDragging, setIsDragging] = useState(false);
 
   // Bulut'a gönderme seçeneği
-  const [sendToCloud, setSendToCloud] = useState<boolean>(defaultSendToCloud);
+  const [sendToCloud, setSendToCloud] = useState<boolean>(
+    externalNodeSettings.defaultSendToCloud !== undefined
+      ? Boolean(externalNodeSettings.defaultSendToCloud)
+      : defaultSendToCloud
+  );
 
   const localFileInputRef = useRef<HTMLInputElement>(null);
   const filesOnCloudsRef = useRef<FilesOnCloudsHandle>(null);
@@ -1518,6 +1560,8 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       isSaving={isImporting}
       extraDropdownActions={cardExtraActions}
       asForm={false}
+      hasExternalSettings={hasExternalSettings}
+      externalSettingsComponent={externalSettingsComponent}
       className="excel-import-card-page"
     >
       <div className="excel-import-content flex flex-col gap-20">
@@ -1560,7 +1604,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
               </div>
 
               {/* Kullanıcıya dosya tipi filtresi seçimi açıksa */}
-              {allowFilterChange && !isExcelMappingMode && (
+              {effectiveAllowFilterChange && !isExcelMappingMode && (
                 <div className="flex items-center gap-8">
                   <Filter size={15} className="text-secondary" />
                   <select
@@ -1953,6 +1997,9 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
   return cardContent;
 };
+
+(FileImportPage as any).hasExternalSettings = true;
+(FileImportPage as any).externalSettingsComponent = FileImportPagesettingsForExternal;
 
 export default FileImportPage;
 export {

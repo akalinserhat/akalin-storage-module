@@ -22,6 +22,7 @@ import BulutDosyalariPageComponent from './pages/BulutDosyalariPage';
 import BulutDepolamaAdminAyarlariComponent from './pages/BulutDepolamaAdminAyarlari';
 import BulutDepolamaKartiComponent from './pages/BulutDepolamaKarti';
 import FileImportPageComponent from './pages/FileImportPage';
+import FileImportPagesettingsForExternalComponent from './pages/FileImportPagesettingsForExternal';
 import FileExportPageComponent from './pages/FileExportPage';
 import { ProviderLogo } from './logos/ProviderLogo';
 
@@ -247,6 +248,8 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
               'Yerel cihazdan veya bulut depolamadan filtreli dosya ve Excel verisi içeri aktarma ekranı (FileImportPage).',
             route: '/araclar/dosya-al',
             formRoute: '/araclar/dosya-al',
+            hasExternalSettings: true,
+            externalSettingsComponent: FileImportPagesettingsForExternalComponent,
           },
           {
             id: 'dosya-disa-aktar-karti',
@@ -304,6 +307,8 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
           'Yerel cihazdan veya bulut depolamadan filtreli dosya ve Excel verisi içeri aktarma ekranı (FileImportPage).',
         route: '/araclar/dosya-al',
         formRoute: '/araclar/dosya-al',
+        hasExternalSettings: true,
+        externalSettingsComponent: FileImportPagesettingsForExternalComponent,
       },
       {
         id: 'dosya-disa-aktar-karti',
@@ -429,6 +434,7 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
       FilesOnClouds: FilesOnCloudsComponent,
       UploadToCloud: UploadToCloudComponent,
       FileImportPage: FileImportPageComponent,
+      FileImportPagesettingsForExternal: FileImportPagesettingsForExternalComponent,
       ExcelImportPage: FileImportPageComponent,
       FileExportPage: FileExportPageComponent,
       ExcelExportPage: FileExportPageComponent,

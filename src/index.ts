@@ -70,6 +70,11 @@ export {
   type ExcelImportModalProps,
 } from './pages/FileImportPage';
 export {
+  FileImportPagesettingsForExternal,
+  type FileImportPagesettingsForExternalProps,
+  type FileImportExternalSettingsValue,
+} from './pages/FileImportPagesettingsForExternal';
+export {
   FileExportPage,
   ExcelExportPage,
   ExcelExportModal,
