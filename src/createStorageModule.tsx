@@ -227,12 +227,116 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
         component: ConnectedAdminAyarlariPage,
       },
     ],
+    lists: [
+      {
+        id: 'bulut-dosyalari-liste',
+        category: 'liste',
+        titleKey: 'bulut_dosyalari_listesi',
+        title: 'Bulut Dosyaları Listesi',
+        description:
+          'Yerel cihaz ve Google Drive, Microsoft OneDrive, Dropbox bulut sürücülerindeki dosya ve evrakların listesi.',
+        route: '/araclar/bulut-dosyalari',
+        listRoute: '/araclar/bulut-dosyalari',
+        children: [
+          {
+            id: 'dosya-ice-aktar-karti',
+            category: 'kart',
+            titleKey: 'dosya_ice_aktar_karti',
+            title: 'Dosya İçeri Aktar (FileImportPage)',
+            description:
+              'Yerel cihazdan veya bulut depolamadan filtreli dosya ve Excel verisi içeri aktarma ekranı (FileImportPage).',
+            route: '/araclar/dosya-al',
+            formRoute: '/araclar/dosya-al',
+          },
+          {
+            id: 'dosya-disa-aktar-karti',
+            category: 'kart',
+            titleKey: 'dosya_disa_aktar_karti',
+            title: 'Dosya Kaydet / Dışa Aktar (FileExportPage)',
+            description:
+              'Tablo, rapor ve belgeleri yerel diske veya bulut klasörüne kaydetme ekranı (FileExportPage).',
+            route: '/araclar/dosya-kaydet',
+            formRoute: '/araclar/dosya-kaydet',
+          },
+          {
+            id: 'bulut-dosyalari-karti',
+            category: 'kart',
+            titleKey: 'bulut_dosyalari_karti',
+            title: 'Bulut Dosyaları Yönetimi (BulutDosyalariPage)',
+            description:
+              'Bulut klasör gezgini, dosya yükleme ve belge evrak ilişkilendirme ekranı (BulutDosyalariPage).',
+            route: '/araclar/bulut-dosyalari',
+            formRoute: '/araclar/bulut-dosyalari',
+          },
+        ],
+      },
+      {
+        id: 'bulut-depolama-entegrasyon-liste',
+        category: 'liste',
+        titleKey: 'bulut_depolama_entegrasyon_listesi',
+        title: 'Bulut Depolama Entegrasyonları Listesi',
+        description:
+          'Google Drive, Microsoft OneDrive ve Dropbox OAuth API bağlantı tanımları listesi.',
+        route: '/bulut-depolama',
+        listRoute: '/bulut-depolama',
+        children: [
+          {
+            id: 'bulut-depolama-karti',
+            category: 'kart',
+            titleKey: 'Bulut Depolama Kartı',
+            title: 'Bulut Depolama Kartı',
+            description:
+              'Bulut sağlayıcı OAuth kimlik bilgileri ve entegrasyon yapılandırma kartı.',
+            route: '/bulut-depolama',
+            formRoute: '/bulut-depolama',
+          },
+        ],
+      },
+    ],
     cards: [
       {
+        id: 'dosya-ice-aktar-karti',
+        parentId: 'bulut-dosyalari-liste',
+        category: 'kart',
+        titleKey: 'dosya_ice_aktar_karti',
+        title: 'Dosya İçeri Aktar (FileImportPage)',
+        description:
+          'Yerel cihazdan veya bulut depolamadan filtreli dosya ve Excel verisi içeri aktarma ekranı (FileImportPage).',
+        route: '/araclar/dosya-al',
+        formRoute: '/araclar/dosya-al',
+      },
+      {
+        id: 'dosya-disa-aktar-karti',
+        parentId: 'bulut-dosyalari-liste',
+        category: 'kart',
+        titleKey: 'dosya_disa_aktar_karti',
+        title: 'Dosya Kaydet / Dışa Aktar (FileExportPage)',
+        description:
+          'Tablo, rapor ve belgeleri yerel diske veya bulut klasörüne kaydetme ekranı (FileExportPage).',
+        route: '/araclar/dosya-kaydet',
+        formRoute: '/araclar/dosya-kaydet',
+      },
+      {
+        id: 'bulut-dosyalari-karti',
+        parentId: 'bulut-dosyalari-liste',
+        category: 'kart',
+        titleKey: 'bulut_dosyalari_karti',
+        title: 'Bulut Dosyaları Yönetimi (BulutDosyalariPage)',
+        description:
+          'Bulut klasör gezgini, dosya yükleme ve belge evrak ilişkilendirme ekranı (BulutDosyalariPage).',
+        route: '/araclar/bulut-dosyalari',
+        formRoute: '/araclar/bulut-dosyalari',
+      },
+      {
         id: 'bulut-depolama-karti',
+        parentId: 'bulut-depolama-entegrasyon-liste',
         category: 'kart',
         titleKey: 'Bulut Depolama Kartı',
+        title: 'Bulut Depolama Kartı',
+        description:
+          'Bulut sağlayıcı OAuth kimlik bilgileri ve entegrasyon yapılandırma kartı.',
         route: '/bulut-depolama',
+        formRoute: '/bulut-depolama',
       },
     ],
     operations: [
