@@ -1094,7 +1094,13 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       } catch {
         // ignore
       }
-      sessionStorage.removeItem('webakus_ai_waiting_entity');
+      setTimeout(() => {
+        try {
+          sessionStorage.removeItem('webakus_ai_waiting_entity');
+        } catch {
+          // ignore
+        }
+      }, 1200);
     }
 
     const importedFiles: Array<{
@@ -1159,6 +1165,8 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
           workflowPrompt: waitingMeta?.workflowPrompt,
           nodeId: waitingMeta?.nodeId,
           nodePrompt: waitingMeta?.nodePrompt,
+          sonrakiDugumId: waitingMeta?.sonrakiDugumId,
+          sonrakiDugum: waitingMeta?.sonrakiDugum,
           kayitSonrasiTeyitEt: waitingMeta?.kayitSonrasiTeyitEt,
           route: location.pathname,
           importedFiles,
