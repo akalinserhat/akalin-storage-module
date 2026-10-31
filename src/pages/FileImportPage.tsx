@@ -1186,7 +1186,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
             }
           }
           extractedText = sheetTexts.join('\n\n');
-        } else if (item.localFile && !cloudId) {
+        } else if (item.localFile) {
           const formData = new FormData();
           formData.append('dosya', item.localFile);
           const res = await axios.post('/api/AiChat/dosya-metin-cikar', formData, {
