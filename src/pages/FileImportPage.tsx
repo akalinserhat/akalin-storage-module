@@ -462,9 +462,17 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
   // Düğüm / harici çağrıdan gelen [sayfaİsmi]SettingsForExternal ayarlarını oku
   const externalNodeSettings = useMemo<FileImportExternalSettingsValue>(() => {
-    const stateSettings = (location.state as any)?.externalSettings || (location.state as any)?.hariciSayfaAyarlari;
-    if (stateSettings && typeof stateSettings === 'object') {
-      return stateSettings;
+    const stateObj = (location.state as any) || {};
+    const candidates = [
+      stateObj.externalSettings,
+      stateObj.hariciSayfaAyarlari,
+      stateObj.initialAiData?.hariciSayfaAyarlari,
+      stateObj.initialAiData?.waitingEntityPayload?.hariciSayfaAyarlari,
+    ];
+    for (const candidate of candidates) {
+      if (candidate && typeof candidate === 'object' && Object.keys(candidate).length > 0) {
+        return candidate;
+      }
     }
     try {
       const rawWaiting =
@@ -472,7 +480,11 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         sessionStorage.getItem('ai_agent_waiting_form_data');
       if (rawWaiting) {
         const parsed = JSON.parse(rawWaiting);
-        if (parsed?.hariciSayfaAyarlari && typeof parsed.hariciSayfaAyarlari === 'object') {
+        if (
+          parsed?.hariciSayfaAyarlari &&
+          typeof parsed.hariciSayfaAyarlari === 'object' &&
+          Object.keys(parsed.hariciSayfaAyarlari).length > 0
+        ) {
           return parsed.hariciSayfaAyarlari;
         }
       }
@@ -591,6 +603,12 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       ? Boolean(externalNodeSettings.defaultSendToCloud)
       : defaultSendToCloud
   );
+
+  useEffect(() => {
+    if (externalNodeSettings.defaultSendToCloud !== undefined) {
+      setSendToCloud(Boolean(externalNodeSettings.defaultSendToCloud));
+    }
+  }, [externalNodeSettings.defaultSendToCloud]);
 
   const localFileInputRef = useRef<HTMLInputElement>(null);
   const filesOnCloudsRef = useRef<FilesOnCloudsHandle>(null);
