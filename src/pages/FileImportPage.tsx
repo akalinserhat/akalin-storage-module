@@ -40,6 +40,12 @@ import {
   BaseSwitch,
   TabLayout,
   DateInput,
+  DosyaTipiFiltresiSecici,
+  FILE_FILTER_PRESETS,
+  resolveFileFilterExtensions,
+  resolveFileFilterAccept,
+  buildGroupedFileFilterOptions,
+  type FileFilterPresetItem,
   type ActionMenuItem,
   type DropdownOption,
   useModulGate,
@@ -64,182 +70,20 @@ import {
   type FileImportExternalSettingsValue,
 } from './FileImportPageSettingsForExternal';
 
-export type { ExcelColumnDef, ExcelSheet, FileFilterCategory, FileSelectionMode, ImportedFileItem };
-
-export interface FileFilterPresetItem {
-  extensions: string[];
-  accept: string;
-  labelKey: string;
-  defaultLabel: string;
-  groupKey?: string;
-  defaultGroupLabel?: string;
-  isAllOption?: boolean;
-}
-
-export const FILE_FILTER_PRESETS: Record<FileFilterCategory, FileFilterPresetItem> = {
-  all: {
-    extensions: [],
-    accept: '*/*',
-    labelKey: 'FileImport_filterAll',
-    defaultLabel: 'Tüm Dosyalar',
-    isAllOption: true,
-  },
-  pdf: {
-    extensions: ['pdf'],
-    accept: '.pdf',
-    labelKey: 'FileImport_filterPdf',
-    defaultLabel: 'PDF Belgeleri (.pdf)',
-    groupKey: 'FileImport_groupTextDocs',
-    defaultGroupLabel: 'Text Dokümanlar',
-  },
-  word: {
-    extensions: ['doc', 'docx', 'rtf', 'odt'],
-    accept: '.doc,.docx,.rtf,.odt',
-    labelKey: 'FileImport_filterWord',
-    defaultLabel: 'Word Dokümanları (.docx, .doc, .rtf, .odt)',
-    groupKey: 'FileImport_groupTextDocs',
-    defaultGroupLabel: 'Text Dokümanlar',
-  },
-  txt: {
-    extensions: ['txt', 'md'],
-    accept: '.txt,.md',
-    labelKey: 'FileImport_filterTxt',
-    defaultLabel: 'Metin Dokümanları (.txt, .md)',
-    groupKey: 'FileImport_groupTextDocs',
-    defaultGroupLabel: 'Text Dokümanlar',
-  },
-  png: {
-    extensions: ['png'],
-    accept: '.png',
-    labelKey: 'FileImport_filterPng',
-    defaultLabel: 'PNG Görselleri (.png)',
-    groupKey: 'FileImport_groupImages',
-    defaultGroupLabel: 'Resimler',
-  },
-  jpg: {
-    extensions: ['jpg', 'jpeg'],
-    accept: '.jpg,.jpeg',
-    labelKey: 'FileImport_filterJpg',
-    defaultLabel: 'JPEG / JPG Görselleri (.jpg, .jpeg)',
-    groupKey: 'FileImport_groupImages',
-    defaultGroupLabel: 'Resimler',
-  },
-  webp_svg: {
-    extensions: ['webp', 'svg', 'gif', 'bmp'],
-    accept: '.webp,.svg,.gif,.bmp',
-    labelKey: 'FileImport_filterWebpSvg',
-    defaultLabel: 'WebP, SVG & GIF Görselleri (.webp, .svg, .gif, .bmp)',
-    groupKey: 'FileImport_groupImages',
-    defaultGroupLabel: 'Resimler',
-  },
-  image: {
-    extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp'],
-    accept: '.png,.jpg,.jpeg,.webp,.gif,.svg,.bmp',
-    labelKey: 'FileImport_filterImage',
-    defaultLabel: 'Tüm Resimler (.png, .jpg, .webp, .svg, .gif)',
-    groupKey: 'FileImport_groupImages',
-    defaultGroupLabel: 'Resimler',
-  },
-  excel: {
-    extensions: ['xlsx', 'xls', 'ods'],
-    accept: '.xlsx,.xls,.ods',
-    labelKey: 'FileImport_filterExcel',
-    defaultLabel: 'Excel & Tablo (.xlsx, .xls, .ods)',
-    groupKey: 'FileImport_groupSpreadsheets',
-    defaultGroupLabel: 'Tablo & Veri Dokümanları',
-  },
-  csv: {
-    extensions: ['csv'],
-    accept: '.csv',
-    labelKey: 'FileImport_filterCsv',
-    defaultLabel: 'CSV (.csv)',
-    groupKey: 'FileImport_groupSpreadsheets',
-    defaultGroupLabel: 'Tablo & Veri Dokümanları',
-  },
-  json: {
-    extensions: ['json'],
-    accept: '.json',
-    labelKey: 'FileImport_filterJson',
-    defaultLabel: 'JSON (.json)',
-    groupKey: 'FileImport_groupSpreadsheets',
-    defaultGroupLabel: 'Tablo & Veri Dokümanları',
-  },
-  xml: {
-    extensions: ['xml'],
-    accept: '.xml',
-    labelKey: 'FileImport_filterXml',
-    defaultLabel: 'XML (.xml)',
-    groupKey: 'FileImport_groupSpreadsheets',
-    defaultGroupLabel: 'Tablo & Veri Dokümanları',
-  },
-  archive: {
-    extensions: ['zip', 'rar', '7z', 'tar', 'gz'],
-    accept: '.zip,.rar,.7z,.tar,.gz',
-    labelKey: 'FileImport_filterArchive',
-    defaultLabel: 'Arşiv (.zip, .rar, .7z)',
-    groupKey: 'FileImport_groupArchives',
-    defaultGroupLabel: 'Arşiv Dosyaları',
-  },
+export type {
+  ExcelColumnDef,
+  ExcelSheet,
+  FileFilterCategory,
+  FileFilterPresetItem,
+  FileSelectionMode,
+  ImportedFileItem,
 };
-
-export function resolveFileFilterExtensions(
-  selection: FileFilterCategory | string | string[] | undefined
-): string[] {
-  if (!selection) return [];
-  const rawArray = Array.isArray(selection) ? selection : [selection];
-  if (rawArray.length === 0 || rawArray.includes('all')) return [];
-
-  const extSet = new Set<string>();
-  rawArray.forEach((item) => {
-    const key = String(item || '').trim().toLowerCase();
-    if (!key || key === 'all') return;
-    const preset = (FILE_FILTER_PRESETS as Record<string, FileFilterPresetItem>)[key];
-    if (preset && preset.extensions.length > 0) {
-      preset.extensions.forEach((ext) => extSet.add(ext.replace(/^\./, '').toLowerCase()));
-    } else {
-      extSet.add(key.replace(/^\./, '').toLowerCase());
-    }
-  });
-
-  return Array.from(extSet);
-}
-
-export function buildGroupedFileFilterOptions(
-  t: (key: string, fallback: string) => string
-): DropdownOption[] {
-  const orderedKeys: FileFilterCategory[] = [
-    'all',
-    'pdf',
-    'word',
-    'txt',
-    'png',
-    'jpg',
-    'webp_svg',
-    'excel',
-    'csv',
-    'json',
-    'xml',
-    'archive',
-  ];
-
-  return orderedKeys.map((catKey) => {
-    const preset = FILE_FILTER_PRESETS[catKey];
-    const labelText = t(preset.labelKey, preset.defaultLabel);
-    const groupText =
-      preset.groupKey && preset.defaultGroupLabel
-        ? t(preset.groupKey, preset.defaultGroupLabel)
-        : undefined;
-
-    return {
-      id: catKey,
-      value: catKey,
-      label: labelText,
-      group: groupText,
-      isAllOption: Boolean(preset.isAllOption),
-      searchText: `${groupText ? `${groupText} ` : ''}${labelText} ${preset.extensions.join(' ')}`,
-    };
-  });
-}
+export {
+  FILE_FILTER_PRESETS,
+  resolveFileFilterExtensions,
+  resolveFileFilterAccept,
+  buildGroupedFileFilterOptions,
+};
 
 export interface FileImportPageProps {
   isOpen?: boolean;
@@ -1759,15 +1603,14 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
               {effectiveAllowFilterChange && !isExcelMappingMode && (
                 <div className="flex items-center gap-8 min-w-260">
                   <Filter size={15} className="text-secondary shrink-0" />
-                  <BaseDropdownSecici
+                  <DosyaTipiFiltresiSecici
                     id="fileImportToolbarFilterSelect"
                     options={groupedFilterOptions}
                     multiple={true}
                     clearable={true}
                     value={activeFilterSelection}
-                    onChange={(nextVal) => {
-                      const nextArr = Array.isArray(nextVal) && nextVal.length > 0 ? nextVal.map(String) : ['all'];
-                      setActiveFilterSelection(nextArr);
+                    onChange={(nextFilters) => {
+                      setActiveFilterSelection(nextFilters);
                     }}
                   />
                 </div>

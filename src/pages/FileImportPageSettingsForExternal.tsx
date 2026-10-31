@@ -9,18 +9,16 @@
 
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sliders, Filter, Files, Cloud } from 'lucide-react';
+import { Sliders, Files, Cloud } from 'lucide-react';
 import {
   BaseCardPage,
   BaseDropdownSecici,
   BaseSwitch,
+  DosyaTipiFiltresiSecici,
+  resolveFileFilterExtensions,
   type DropdownOption,
 } from '@akalin/ui';
 import type { FileFilterCategory, FileSelectionMode } from '../types';
-import {
-  buildGroupedFileFilterOptions,
-  resolveFileFilterExtensions,
-} from './FileImportPage';
 
 export interface FileImportExternalSettingsValue {
   /** Çoklu seçilen dosya tipi filtre anahtarları (örn: ['pdf', 'word', 'png'] veya ['all']) */
@@ -78,11 +76,6 @@ export const FileImportPageSettingsForExternal: React.FC<FileImportPageSettingsF
     };
   });
 
-  const filterOptions = useMemo<DropdownOption[]>(
-    () => buildGroupedFileFilterOptions(t),
-    [t]
-  );
-
   const selectedFilterValues = useMemo<string[]>(() => {
     if (Array.isArray(formState.fileTypeFilters) && formState.fileTypeFilters.length > 0) {
       return formState.fileTypeFilters;
@@ -95,14 +88,6 @@ export const FileImportPageSettingsForExternal: React.FC<FileImportPageSettingsF
     }
     return ['all'];
   }, [formState.fileTypeFilters, formState.fileTypeFilter]);
-
-  const resolvedExtensionsPreview = useMemo<string>(() => {
-    const exts = resolveFileFilterExtensions(selectedFilterValues);
-    if (exts.length === 0) {
-      return t('FileImport_allFormatsAllowed', 'Tüm dosya formatları');
-    }
-    return exts.map((ext) => `.${ext}`).join(', ');
-  }, [selectedFilterValues, t]);
 
   const selectionModeOptions = useMemo<DropdownOption[]>(
     () => [
@@ -168,35 +153,21 @@ export const FileImportPageSettingsForExternal: React.FC<FileImportPageSettingsF
       <div className="flex flex-col gap-20">
         <div className="form-grid gap-16">
           <div className="form-group flex flex-col gap-6">
-            <label className="form-field-label flex items-center gap-6 font-semibold text-13 text-primary">
-              <Filter size={14} />
-              <span>{t('FileImport_defaultFilterLabel', 'Varsayılan Dosya Tipi Filtresi')}</span>
-            </label>
-            <BaseDropdownSecici
+            <DosyaTipiFiltresiSecici
               id="fileImportExtFilterSelect"
-              options={filterOptions}
+              label={t('FileImport_defaultFilterLabel', 'Varsayılan Dosya Tipi Filtresi')}
+              value={selectedFilterValues}
               multiple={true}
               clearable={true}
-              value={selectedFilterValues}
-              placeholder={t('FileImport_selectFileTypesPlaceholder', 'Dosya türlerini seçin...')}
-              onChange={(val) => {
-                const nextFilters =
-                  Array.isArray(val) && val.length > 0 ? val.map(String) : ['all'];
-                const nextExtensions = resolveFileFilterExtensions(nextFilters);
+              showAllowedExtensionsHint={true}
+              onChange={(nextFilters, payload) => {
                 handleFieldUpdate({
                   fileTypeFilters: nextFilters,
-                  fileTypeFilter:
-                    nextFilters.length === 1
-                      ? (nextFilters[0] as FileFilterCategory)
-                      : nextFilters,
-                  allowedExtensions: nextExtensions,
+                  fileTypeFilter: payload.primaryFilter,
+                  allowedExtensions: payload.allowedExtensions,
                 });
               }}
             />
-            <span className="text-11 text-secondary">
-              {t('FileImport_allowedFormatsLabel', 'İzin verilen formatlar')}:{' '}
-              <strong className="text-primary">{resolvedExtensionsPreview}</strong>
-            </span>
           </div>
 
           <div className="form-group flex flex-col gap-6">
