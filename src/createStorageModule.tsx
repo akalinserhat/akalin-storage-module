@@ -22,7 +22,7 @@ import BulutDosyalariPageComponent from './pages/BulutDosyalariPage';
 import BulutDepolamaAdminAyarlariComponent from './pages/BulutDepolamaAdminAyarlari';
 import BulutDepolamaKartiComponent from './pages/BulutDepolamaKarti';
 import FileImportPageComponent from './pages/FileImportPage';
-import FileImportPagesettingsForExternalComponent from './pages/FileImportPagesettingsForExternal';
+import FileImportPageSettingsForExternalComponent from './pages/FileImportPageSettingsForExternal';
 import FileExportPageComponent from './pages/FileExportPage';
 import { ProviderLogo } from './logos/ProviderLogo';
 
@@ -249,7 +249,7 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
             route: '/araclar/dosya-al',
             formRoute: '/araclar/dosya-al',
             hasExternalSettings: true,
-            externalSettingsComponent: FileImportPagesettingsForExternalComponent,
+            externalSettingsComponent: FileImportPageSettingsForExternalComponent,
           },
           {
             id: 'dosya-disa-aktar-karti',
@@ -308,7 +308,7 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
         route: '/araclar/dosya-al',
         formRoute: '/araclar/dosya-al',
         hasExternalSettings: true,
-        externalSettingsComponent: FileImportPagesettingsForExternalComponent,
+        externalSettingsComponent: FileImportPageSettingsForExternalComponent,
       },
       {
         id: 'dosya-disa-aktar-karti',
@@ -434,7 +434,8 @@ export function createStorageModule(options?: CreateStorageModuleOptions): IModu
       FilesOnClouds: FilesOnCloudsComponent,
       UploadToCloud: UploadToCloudComponent,
       FileImportPage: FileImportPageComponent,
-      FileImportPagesettingsForExternal: FileImportPagesettingsForExternalComponent,
+      FileImportPageSettingsForExternal: FileImportPageSettingsForExternalComponent,
+      FileImportPagesettingsForExternal: FileImportPageSettingsForExternalComponent,
       ExcelImportPage: FileImportPageComponent,
       FileExportPage: FileExportPageComponent,
       ExcelExportPage: FileExportPageComponent,

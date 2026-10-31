@@ -1,5 +1,5 @@
 /**
- * @akalin/file_manager_module - FileImportPage Harici Düğüm Ayar Sayfası (FileImportPagesettingsForExternal.tsx)
+ * @akalin/file_manager_module - FileImportPage Harici Düğüm Ayar Sayfası (FileImportPageSettingsForExternal.tsx)
  *
  * Başlıca Sorumlulukları:
  * - Flowchart düğümleri (FORM_AC, AI_ISLEM vb.) veya dış bileşenler tarafından FileImportPage seçildiğinde
@@ -34,7 +34,7 @@ export interface FileImportExternalSettingsValue {
   defaultSendToCloud?: boolean;
 }
 
-export interface FileImportPagesettingsForExternalProps {
+export interface FileImportPageSettingsForExternalProps {
   isOpen?: boolean;
   inModal?: boolean;
   entity?: any;
@@ -45,7 +45,9 @@ export interface FileImportPagesettingsForExternalProps {
   onBack?: () => void;
 }
 
-export const FileImportPagesettingsForExternal: React.FC<FileImportPagesettingsForExternalProps> = ({
+export type FileImportPagesettingsForExternalProps = FileImportPageSettingsForExternalProps;
+
+export const FileImportPageSettingsForExternal: React.FC<FileImportPageSettingsForExternalProps> = ({
   isOpen = true,
   inModal = true,
   value,
@@ -273,4 +275,5 @@ export const FileImportPagesettingsForExternal: React.FC<FileImportPagesettingsF
   );
 };
 
-export default FileImportPagesettingsForExternal;
+export const FileImportPagesettingsForExternal = FileImportPageSettingsForExternal;
+export default FileImportPageSettingsForExternal;

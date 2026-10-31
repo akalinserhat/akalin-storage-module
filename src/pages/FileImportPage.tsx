@@ -60,9 +60,9 @@ import {
   ImportedFileItem,
 } from '../types';
 import {
-  FileImportPagesettingsForExternal,
+  FileImportPageSettingsForExternal,
   type FileImportExternalSettingsValue,
-} from './FileImportPagesettingsForExternal';
+} from './FileImportPageSettingsForExternal';
 
 export type { ExcelColumnDef, ExcelSheet, FileFilterCategory, FileSelectionMode, ImportedFileItem };
 
@@ -298,7 +298,7 @@ export interface FileImportPageProps {
   isModal?: boolean;
   asPage?: boolean;
   defaultSendToCloud?: boolean;
-  /** Sayfanın düğüm/harici bileşen tarafından çağrılabilecek [sayfaİsmi]settingsForExternal.tsx ayar sayfası var mı? */
+  /** Sayfanın düğüm/harici bileşen tarafından çağrılabilecek [sayfaİsmi]SettingsForExternal.tsx ayar sayfası var mı? */
   hasExternalSettings?: boolean;
   /** Harici ayar bileşeni referansı */
   externalSettingsComponent?: React.ComponentType<any>;
@@ -607,7 +607,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   asPage = false,
   defaultSendToCloud = true,
   hasExternalSettings = true,
-  externalSettingsComponent = FileImportPagesettingsForExternal,
+  externalSettingsComponent = FileImportPageSettingsForExternal,
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -616,7 +616,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   const { isActive: modulGateActive } = useModulGate('MOD_BULUT_DEPOLAMA');
   const isBulutActive = Boolean(modulGateActive);
 
-  // Düğüm / harici çağrıdan gelen [sayfaİsmi]settingsForExternal ayarlarını oku
+  // Düğüm / harici çağrıdan gelen [sayfaİsmi]SettingsForExternal ayarlarını oku
   const externalNodeSettings = useMemo<FileImportExternalSettingsValue>(() => {
     const stateSettings = (location.state as any)?.externalSettings || (location.state as any)?.hariciSayfaAyarlari;
     if (stateSettings && typeof stateSettings === 'object') {
@@ -2152,7 +2152,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 };
 
 (FileImportPage as any).hasExternalSettings = true;
-(FileImportPage as any).externalSettingsComponent = FileImportPagesettingsForExternal;
+(FileImportPage as any).externalSettingsComponent = FileImportPageSettingsForExternal;
 
 export default FileImportPage;
 export {
