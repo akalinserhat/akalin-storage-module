@@ -45,6 +45,29 @@ export interface FileImportPageSettingsForExternalProps {
 
 export type FileImportPagesettingsForExternalProps = FileImportPageSettingsForExternalProps;
 
+const buildExternalSettingsState = (
+  val?: FileImportExternalSettingsValue
+): FileImportExternalSettingsValue => {
+  const initialFilters: string[] =
+    Array.isArray(val?.fileTypeFilters) && val!.fileTypeFilters!.length > 0
+      ? val!.fileTypeFilters!.map(String)
+      : Array.isArray(val?.fileTypeFilter) && val!.fileTypeFilter!.length > 0
+        ? val!.fileTypeFilter!.map(String)
+        : typeof val?.fileTypeFilter === 'string' && val.fileTypeFilter
+          ? [val.fileTypeFilter]
+          : ['all'];
+
+  return {
+    fileTypeFilters: initialFilters,
+    fileTypeFilter:
+      initialFilters.length === 1 ? (initialFilters[0] as FileFilterCategory) : initialFilters,
+    allowedExtensions: resolveFileFilterExtensions(initialFilters),
+    selectionMode: val?.selectionMode || 'single',
+    allowFilterChange: val?.allowFilterChange !== false,
+    defaultSendToCloud: Boolean(val?.defaultSendToCloud),
+  };
+};
+
 export const FileImportPageSettingsForExternal: React.FC<FileImportPageSettingsForExternalProps> = ({
   isOpen = true,
   inModal = true,
@@ -56,25 +79,19 @@ export const FileImportPageSettingsForExternal: React.FC<FileImportPageSettingsF
 }) => {
   const { t } = useTranslation();
 
-  const [formState, setFormState] = useState<FileImportExternalSettingsValue>(() => {
-    const initialFilters: string[] =
-      Array.isArray(value?.fileTypeFilters) && value!.fileTypeFilters!.length > 0
-        ? value!.fileTypeFilters!.map(String)
-        : Array.isArray(value?.fileTypeFilter) && value!.fileTypeFilter!.length > 0
-          ? value!.fileTypeFilter!.map(String)
-          : typeof value?.fileTypeFilter === 'string' && value.fileTypeFilter
-            ? [value.fileTypeFilter]
-            : ['all'];
+  const [formState, setFormState] = useState<FileImportExternalSettingsValue>(() =>
+    buildExternalSettingsState(value)
+  );
+  const formStateRef = React.useRef<FileImportExternalSettingsValue>(formState);
+  formStateRef.current = formState;
 
-    return {
-      fileTypeFilters: initialFilters,
-      fileTypeFilter: initialFilters.length === 1 ? (initialFilters[0] as FileFilterCategory) : initialFilters,
-      allowedExtensions: resolveFileFilterExtensions(initialFilters),
-      selectionMode: value?.selectionMode || 'single',
-      allowFilterChange: value?.allowFilterChange !== false,
-      defaultSendToCloud: Boolean(value?.defaultSendToCloud),
-    };
-  });
+  React.useEffect(() => {
+    if (value && typeof value === 'object' && Object.keys(value).length > 0) {
+      const synced = buildExternalSettingsState(value);
+      setFormState(synced);
+      formStateRef.current = synced;
+    }
+  }, [value]);
 
   const selectedFilterValues = useMemo<string[]>(() => {
     if (Array.isArray(formState.fileTypeFilters) && formState.fileTypeFilters.length > 0) {
@@ -108,18 +125,18 @@ export const FileImportPageSettingsForExternal: React.FC<FileImportPageSettingsF
   if (!isOpen) return null;
 
   const handleFieldUpdate = (patch: Partial<FileImportExternalSettingsValue>) => {
-    setFormState((prev) => {
-      const next = { ...prev, ...patch };
-      if (onChange) {
-        onChange(next);
-      }
-      return next;
-    });
+    const next = { ...formStateRef.current, ...patch };
+    formStateRef.current = next;
+    setFormState(next);
   };
 
   const handleSaveSettings = () => {
+    const current = formStateRef.current;
+    if (onChange) {
+      onChange(current);
+    }
     if (onSave) {
-      onSave(formState);
+      onSave(current);
     } else if (onClose) {
       onClose();
     }
