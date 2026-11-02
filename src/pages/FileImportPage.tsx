@@ -1159,45 +1159,55 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       }, 1200);
     }
 
+    const readFileAsDataUrl = (file: File): Promise<string> =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('File read error'));
+        reader.readAsDataURL(file);
+      });
+
+    const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+      }
+      return btoa(binary);
+    };
+
     const importedFiles: Array<{
       dosyaAdi: string;
       uzanti: string;
       boyut: number;
       kaynak: 'local' | 'cloud';
       bulutDosyaId?: number | string;
-      metinIcerigi?: string;
+      base64Verisi?: string;
     }> = [];
 
     for (const item of items) {
       const cloudId = item.cloudFile?.id || (item.cloudFile as any)?.Id;
-      let extractedText = '';
+      let base64Verisi = '';
 
       try {
-        if (['txt', 'md', 'csv', 'json', 'xml'].includes(item.extension) && item.arrayBuffer) {
-          extractedText = new TextDecoder('utf-8').decode(item.arrayBuffer).trim();
-        } else if (['xlsx', 'xls', 'ods'].includes(item.extension) && item.arrayBuffer) {
-          const wb = XLSX.read(new Uint8Array(item.arrayBuffer), { type: 'array', cellDates: true });
-          const sheetTexts: string[] = [];
-          for (const sName of wb.SheetNames) {
-            const ws = wb.Sheets[sName];
-            const csv = XLSX.utils.sheet_to_csv(ws, { blankrows: false });
-            if (csv && csv.trim()) {
-              sheetTexts.push(`[Sayfa: ${sName}]\n${csv.trim()}`);
-            }
-          }
-          extractedText = sheetTexts.join('\n\n');
-        } else if (item.localFile) {
-          const formData = new FormData();
-          formData.append('dosya', item.localFile);
-          const res = await axios.post('/api/AiChat/dosya-metin-cikar', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          });
-          if (res.data?.basarili && res.data?.metin) {
-            extractedText = String(res.data.metin).trim();
-          }
+        if (item.localFile) {
+          base64Verisi = await readFileAsDataUrl(item.localFile);
+        } else if (item.arrayBuffer) {
+          const mimeMap: Record<string, string> = {
+            pdf: 'application/pdf',
+            docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            txt: 'text/plain',
+            md: 'text/markdown',
+            csv: 'text/csv',
+            json: 'application/json',
+          };
+          const mime = mimeMap[item.extension.toLowerCase()] || 'application/octet-stream';
+          base64Verisi = `data:${mime};base64,${arrayBufferToBase64(item.arrayBuffer)}`;
         }
       } catch (err) {
-        console.warn('AI file text extraction warning:', err);
+        console.warn('AI file base64 read warning:', err);
       }
 
       importedFiles.push({
@@ -1206,7 +1216,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         boyut: item.size,
         kaynak: item.source,
         bulutDosyaId: cloudId,
-        metinIcerigi: extractedText || undefined,
+        base64Verisi: base64Verisi || undefined,
       });
     }
 
