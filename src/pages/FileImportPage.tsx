@@ -122,15 +122,15 @@ export interface FileImportPageProps {
   /**
    * Seçilen dosyaları (tekli veya çoklu) döndüren callback
    */
-  onFilesImported?: (files: ImportedFileItem[]) => void;
+  onFilesImported?: (files: ImportedFileItem[]) => void | Promise<any>;
   /**
    * Tekli dosya seçildiğinde veya aktarıldığında tetiklenen callback
    */
-  onFileImported?: (file: ImportedFileItem) => void;
+  onFileImported?: (file: ImportedFileItem) => void | Promise<any>;
   /**
    * Excel sütun eşleştirme modunda veya genel aktarımda tetiklenen callback
    */
-  onImport?: (data: any[]) => void;
+  onImport?: (data: any[]) => void | Promise<any>;
   /**
    * Verildiğinde Excel Sayfa ve Sütun Eşleştirme (Column Mapping) modunu aktif eder
    */
@@ -623,7 +623,9 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     setActiveTab('');
     setIsDragging(false);
     setIsImporting(false);
-    if (isImportRoute) {
+    if (onClose) {
+      onClose();
+    } else if (isImportRoute) {
       const returnRoute = (location.state as any)?.returnRoute;
       const parentPath = location.pathname.replace(/\/(excel-import|file-import|dosya-al)$/, '');
       const targetBack =
@@ -634,9 +636,6 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
           ...(location.state as any),
         },
       });
-    }
-    if (onClose) {
-      onClose();
     }
   }, [isImportRoute, location.pathname, location.state, navigate, onClose]);
 
@@ -1255,20 +1254,26 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     // 1) Genel Dosya Seçim Modu (Excel Sütun Eşleştirme yoksa)
     if (!isExcelMappingMode) {
       setIsImporting(true);
-      await uploadLocalFilesToCloudIfEnabled();
-      await notifyAiAssistantOnFileImport(selectedFiles);
-      setIsImporting(false);
+      try {
+        await uploadLocalFilesToCloudIfEnabled();
+        await notifyAiAssistantOnFileImport(selectedFiles);
 
-      if (onFilesImported) {
-        onFilesImported(selectedFiles);
+        if (onFilesImported) {
+          await onFilesImported(selectedFiles);
+        }
+        if (onFileImported && selectedFiles[0]) {
+          await onFileImported(selectedFiles[0]);
+        }
+        if (onImport) {
+          await onImport(selectedFiles);
+        }
+        handleClose();
+      } catch (err: any) {
+        console.error('File import error:', err);
+        toast.error(err?.message || t('ExcelImport_error', 'İçe aktarma sırasında bir hata oluştu.'));
+      } finally {
+        setIsImporting(false);
       }
-      if (onFileImported && selectedFiles[0]) {
-        onFileImported(selectedFiles[0]);
-      }
-      if (onImport) {
-        onImport(selectedFiles);
-      }
-      handleClose();
       return;
     }
 
@@ -1388,17 +1393,23 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     }
 
     setIsImporting(true);
-    await uploadLocalFilesToCloudIfEnabled();
-    await notifyAiAssistantOnFileImport(selectedFiles);
-    setIsImporting(false);
+    try {
+      await uploadLocalFilesToCloudIfEnabled();
+      await notifyAiAssistantOnFileImport(selectedFiles);
 
-    if (onImport) {
-      onImport(mappedData);
+      if (onImport) {
+        await onImport(mappedData);
+      }
+      if (onFilesImported) {
+        await onFilesImported(selectedFiles);
+      }
+      handleClose();
+    } catch (err: any) {
+      console.error('Excel import error:', err);
+      toast.error(err?.message || t('ExcelImport_error', 'İçe aktarma sırasında bir hata oluştu.'));
+    } finally {
+      setIsImporting(false);
     }
-    if (onFilesImported) {
-      onFilesImported(selectedFiles);
-    }
-    handleClose();
   };
 
   const sendToCloudAction = useMemo<ActionMenuItem>(() => {
