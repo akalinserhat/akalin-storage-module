@@ -721,6 +721,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
             maxCols,
             validColumns,
             mapping: initialMapping,
+            isCustomized: false,
           });
         }
       }
@@ -1002,12 +1003,30 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   };
 
   const updateMapping = (sheetName: string, field: string, value: string) => {
-    setSheets((prev) =>
-      prev.map((s) => ({
-        ...s,
-        mapping: { ...s.mapping, [field]: value },
-      }))
-    );
+    setSheets((prev) => {
+      const currentIdx = prev.findIndex((s) => s.name === sheetName);
+      if (currentIdx === -1) return prev;
+
+      return prev.map((s, idx) => {
+        if (idx < currentIdx) {
+          return s;
+        }
+        if (idx === currentIdx) {
+          return {
+            ...s,
+            isCustomized: true,
+            mapping: { ...s.mapping, [field]: value },
+          };
+        }
+        if (s.isCustomized) {
+          return s;
+        }
+        return {
+          ...s,
+          mapping: { ...s.mapping, [field]: value },
+        };
+      });
+    });
   };
 
   // Yapay Zeka (AI) Otomatik Sütun Eşleştirme
@@ -1058,8 +1077,15 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         const eslesmeler: Record<string, number | null> = response.data.eslesmeler;
         let matchCount = 0;
 
-        setSheets((prev) =>
-          prev.map((s) => {
+        setSheets((prev) => {
+          const currentIdx = prev.findIndex((s) => s.name === activeTab);
+          return prev.map((s, idx) => {
+            if (currentIdx !== -1 && idx < currentIdx) {
+              return s;
+            }
+            if (idx !== currentIdx && s.isCustomized) {
+              return s;
+            }
             const newMapping = { ...s.mapping };
             Object.entries(eslesmeler).forEach(([fieldKey, colIdx]) => {
               if (colIdx !== null && colIdx !== undefined) {
@@ -1071,10 +1097,11 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
             });
             return {
               ...s,
+              ...(idx === currentIdx ? { isCustomized: true } : {}),
               mapping: newMapping,
             };
-          })
-        );
+          });
+        });
 
         if (matchCount > 0) {
           toast.success(t('ExcelImport_aiMatchSuccess', 'Sütunlar yapay zeka ile otomatik eşleştirildi.'));

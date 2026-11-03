@@ -146,6 +146,7 @@ export interface ExcelSheet {
   maxCols: number;
   validColumns: number[];
   mapping: Record<string, any>;
+  isCustomized?: boolean;
 }
 
 export type ExportFormatType = 'xlsx' | 'csv' | 'json' | 'xml' | 'txt' | 'html';
