@@ -1003,16 +1003,10 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
   const updateMapping = (sheetName: string, field: string, value: string) => {
     setSheets((prev) =>
-      prev.map((s) => {
-        if (s.name === sheetName) {
-          return {
-            ...s,
-            isActive: true,
-            mapping: { ...s.mapping, [field]: value },
-          };
-        }
-        return s;
-      })
+      prev.map((s) => ({
+        ...s,
+        mapping: { ...s.mapping, [field]: value },
+      }))
     );
   };
 
@@ -1066,21 +1060,19 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
         setSheets((prev) =>
           prev.map((s) => {
-            if (s.name === activeTab) {
-              const newMapping = { ...s.mapping };
-              Object.entries(eslesmeler).forEach(([fieldKey, colIdx]) => {
-                if (colIdx !== null && colIdx !== undefined) {
-                  newMapping[fieldKey] = String(colIdx);
+            const newMapping = { ...s.mapping };
+            Object.entries(eslesmeler).forEach(([fieldKey, colIdx]) => {
+              if (colIdx !== null && colIdx !== undefined) {
+                newMapping[fieldKey] = String(colIdx);
+                if (s.name === activeTab) {
                   matchCount++;
                 }
-              });
-              return {
-                ...s,
-                isActive: true,
-                mapping: newMapping,
-              };
-            }
-            return s;
+              }
+            });
+            return {
+              ...s,
+              mapping: newMapping,
+            };
           })
         );
 
