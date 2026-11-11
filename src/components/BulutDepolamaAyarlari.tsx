@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { Cloud, CheckCircle2, Trash2, HardDrive, RefreshCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { BaseSystemPage, BaseSystemCard, StorageQuotaBar } from '@akalin/ui';
+import { BaseSystemPage, BaseSystemCard, BaseButton, StorageQuotaBar } from '@akalin/ui';
 import { useStorageModule } from '../adapters/StorageServiceContext';
 import { ProviderLogo } from '../logos/ProviderLogo';
 import { ALL_STORAGE_PROVIDERS } from '../defaults/defaultProviders';
@@ -66,10 +66,24 @@ export const BulutDepolamaAyarlari: React.FC<BulutDepolamaAyarlariProps> = ({
   }, [fetchIntegrations]);
 
   useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      searchParams.delete('error');
+      setSearchParams(searchParams, { replace: true });
+      notify(
+        'error',
+        t(
+          'BulutDepolama_erisimReddedildi',
+          'Bulut depolama bağlantı izni iptal edildi veya reddedildi.'
+        )
+      );
+      return;
+    }
+
     if (searchParams.get('success') === 'true') {
       const provider = searchParams.get('provider');
       const providerObj = ALL_STORAGE_PROVIDERS.find((p) => p.id === provider);
-      const providerLabel = providerObj?.label || 'Bulut depolama';
+      const providerLabel = providerObj?.label || t('BulutDepolama_baslik', 'Bulut Depolama Ayarları');
 
       searchParams.delete('success');
       searchParams.delete('provider');
@@ -110,12 +124,19 @@ export const BulutDepolamaAyarlari: React.FC<BulutDepolamaAyarlariProps> = ({
 
   const handleConnect = async (providerId: string, providerLabel: string) => {
     try {
-      const response = await adapter.getOAuthLoginUrl(providerId, `${providerLabel} Bağlantısı`);
+      const defaultName = `${providerLabel} ${t('BulutDepolama_baglantisi', 'Bağlantısı')}`;
+      const response = await adapter.getOAuthLoginUrl(providerId, defaultName);
       if (response && response.url) {
         window.location.href = response.url;
+      } else {
+        notify('error', t('BulutDepolama_connectError', 'Bağlantı adresi alınamadı.'));
       }
-    } catch {
-      notify('error', t('BulutDepolama_connectError', 'Bağlantı adresi alınamadı.'));
+    } catch (err: any) {
+      const serverMsg =
+        err?.message && !String(err.message).startsWith('HTTP Error')
+          ? String(err.message)
+          : t('BulutDepolama_connectError', 'Bağlantı adresi alınamadı.');
+      notify('error', serverMsg);
     }
   };
 
@@ -284,26 +305,30 @@ export const BulutDepolamaAyarlari: React.FC<BulutDepolamaAyarlariProps> = ({
                       }
                       footer={
                         connectedIntegration ? (
-                          <button
+                          <BaseButton
                             type="button"
-                            className="btn btn-outline-danger w-full flex items-center justify-center gap-8"
+                            variant="outline-danger"
+                            className="w-full justify-center"
+                            icon={<Trash2 size={16} />}
+                            text={t('BulutDepolama_baglantiyiKes', 'Bağlantıyı Kes')}
                             onClick={() => confirmDelete(connectedIntegration.id, provider.label)}
-                          >
-                            <Trash2 size={16} />
-                            {t('BulutDepolama_baglantiyiKes', 'Bağlantıyı Kes')}
-                          </button>
+                          />
                         ) : provider.active ? (
-                          <button
+                          <BaseButton
                             type="button"
-                            className="btn btn-primary w-full flex items-center justify-center gap-8"
+                            variant="primary"
+                            className="w-full justify-center"
+                            text={t('BulutDepolama_baglan', 'Bağlan')}
                             onClick={() => handleConnect(provider.id, provider.label)}
-                          >
-                            {t('BulutDepolama_baglan', 'Bağlan')}
-                          </button>
+                          />
                         ) : (
-                          <button type="button" className="btn btn-secondary w-full opacity-50 cursor-not-allowed" disabled>
-                            {t('BulutDepolama_yakinda', 'Yakında')}
-                          </button>
+                          <BaseButton
+                            type="button"
+                            variant="secondary"
+                            className="w-full justify-center opacity-50 cursor-not-allowed"
+                            text={t('BulutDepolama_yakinda', 'Yakında')}
+                            disabled
+                          />
                         )
                       }
                     />

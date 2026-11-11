@@ -18,12 +18,43 @@ import {
 } from '../types';
 import { DEFAULT_SAMPLE_INTEGRATIONS } from '../defaults/defaultProviders';
 
+export const DEFAULT_STORAGE_TOKEN_KEYS = ['token', 'admin_token'];
+
+/**
+ * Aktif oturuma ait JWT erişim anahtarını (Bearer token) localStorage / sessionStorage üzerinden çözümler.
+ */
+export function resolveStorageAuthToken(
+  tokenKeys?: string[],
+  customGetToken?: () => string | null
+): string | null {
+  if (customGetToken) {
+    return customGetToken();
+  }
+  if (typeof window === 'undefined') return null;
+
+  const effectiveKeys =
+    tokenKeys ||
+    (window.location?.port === '3002' ? ['admin_token', 'token'] : DEFAULT_STORAGE_TOKEN_KEYS);
+
+  for (const key of effectiveKeys) {
+    try {
+      const val = localStorage.getItem(key) || sessionStorage.getItem(key);
+      if (val) return val;
+    } catch {
+      // Depolama erişim hatası yoksayılır
+    }
+  }
+  return null;
+}
+
 /**
  * 1) REST Tabanlı Standart Adaptör (Webakus API uyumlu)
  */
 export function createRestStorageAdapter(options?: {
   apiPrefix?: string;
   settingsPrefix?: string;
+  tokenStorageKeys?: string[];
+  getToken?: () => string | null;
   customHeaders?: Record<string, string> | (() => Record<string, string>);
   customFetch?: typeof fetch;
 }): IStorageServiceAdapter {
@@ -32,8 +63,10 @@ export function createRestStorageAdapter(options?: {
   const doFetch = options?.customFetch || fetch;
 
   const getHeaders = (extra?: Record<string, string>) => {
+    const token = resolveStorageAuthToken(options?.tokenStorageKeys, options?.getToken);
     let headers: Record<string, string> = {
       Accept: 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(extra || {}),
     };
     if (options?.customHeaders) {
@@ -44,23 +77,31 @@ export function createRestStorageAdapter(options?: {
   };
 
   const handleJson = async (res: Response) => {
+    const rawText = await res.text();
     if (!res.ok) {
       let errText = `HTTP Error ${res.status}`;
-      try {
-        const errJson = await res.json();
-        errText = errJson.message || errJson.mesaj || JSON.stringify(errJson);
-      } catch {
+      if (rawText) {
         try {
-          errText = await res.text();
-        } catch { }
+          const errJson = JSON.parse(rawText);
+          if (typeof errJson === 'string') {
+            errText = errJson;
+          } else if (errJson && typeof errJson === 'object') {
+            errText = errJson.message || errJson.mesaj || errJson.detail || errJson.title || rawText;
+          }
+        } catch {
+          errText = rawText;
+        }
       }
-      throw new Error(errText);
+      const err = new Error(errText) as Error & { status?: number };
+      err.status = res.status;
+      throw err;
     }
-    const contentType = res.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      return await res.json();
+    if (!rawText) return null;
+    try {
+      return JSON.parse(rawText);
+    } catch {
+      return null;
     }
-    return null;
   };
 
   return {
@@ -68,7 +109,18 @@ export function createRestStorageAdapter(options?: {
       const res = await doFetch(`${apiPrefix}/Entegrasyonlar`, {
         headers: getHeaders(),
       });
-      return await handleJson(res);
+      const raw = await handleJson(res);
+      if (!Array.isArray(raw)) return [];
+      return raw.map((item: any) => ({
+        ...item,
+        id: item.id,
+        providerType: item.providerType,
+        name: item.name || item.ad || item.kisaAd || '',
+        email: item.email || item.eposta || '',
+        isConnected: item.isConnected !== false,
+        usedBytes: Number(item.usedBytes ?? 0),
+        totalBytes: Number(item.totalBytes ?? 0),
+      }));
     },
 
     async disconnectIntegration(id: number): Promise<void> {
@@ -115,7 +167,7 @@ export function createRestStorageAdapter(options?: {
       const res = await doFetch(`${apiPrefix}/Klasorler`, {
         method: 'POST',
         headers: getHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, klasorAdi: data.ad }),
       });
       return await handleJson(res);
     },
@@ -129,12 +181,25 @@ export function createRestStorageAdapter(options?: {
       if (params?.belgeGuid) search.append('belgeGuid', params.belgeGuid);
       if (params?.belgeNo) search.append('belgeNo', params.belgeNo);
       if (params?.arama) search.append('arama', params.arama);
+      if (params?.isAttachedOnly) search.append('sadeceBelgelereEkli', 'true');
 
       const qs = search.toString();
       const res = await doFetch(`${apiPrefix}/Dosyalar${qs ? `?${qs}` : ''}`, {
         headers: getHeaders(),
       });
-      return await handleJson(res);
+      const raw = await handleJson(res);
+      if (!Array.isArray(raw)) return [];
+      return raw.map((f: any) => ({
+        ...f,
+        id: f.id,
+        dosyaAdi: f.dosyaAdi,
+        boyut: Number(f.boyut ?? f.dosyaBoyutu ?? 0),
+        contentType: f.contentType ?? f.dosyaTipi,
+        dosyaUrl: f.dosyaUrl ?? f.bulutDosyaUrl,
+        yuklemeTarihi: f.yuklemeTarihi ?? f.olusturulmaTarihi,
+        provider: f.provider,
+        klasorId: f.klasorId ?? f.bulutKlasorId ?? null,
+      }));
     },
 
     async uploadFile(
