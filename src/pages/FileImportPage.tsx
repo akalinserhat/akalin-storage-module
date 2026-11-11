@@ -48,7 +48,7 @@ import {
   type FileFilterPresetItem,
   type ActionMenuItem,
   type DropdownOption,
-  useModulGate,
+  type BaseTabItem,
 } from '@akalin/ui';
 import FilesOnClouds, {
   type FilesOnCloudsHandle,
@@ -457,8 +457,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const { adapter } = useStorageModule();
-  const { isActive: modulGateActive } = useModulGate('MOD_BULUT_DEPOLAMA');
-  const isBulutActive = Boolean(modulGateActive);
+  const isBulutActive = true;
 
   // Düğüm / harici çağrıdan gelen [sayfaİsmi]SettingsForExternal ayarlarını oku
   const externalNodeSettings = useMemo<FileImportExternalSettingsValue>(() => {
@@ -589,8 +588,8 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   const [selectedFiles, setSelectedFiles] = useState<ImportedFileItem[]>([]);
   const [sheets, setSheets] = useState<ExcelSheet[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
-  const [fileSourceTab, setFileSourceTab] = useState<'local' | 'cloud'>('local');
-  const [cloudShowFolders, setCloudShowFolders] = useState<boolean>(false);
+  const [fileSourceTab, setFileSourceTab] = useState<'local' | 'cloud' | 'mapping'>('local');
+  const [cloudShowFolders, setCloudShowFolders] = useState<boolean>(true);
 
   // İşlem durumları
   const [isAiMatching, setIsAiMatching] = useState(false);
@@ -781,6 +780,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
             }
             setSheets(parsedSheets);
             setActiveTab(parsedSheets[0].name);
+            setFileSourceTab('mapping');
           } catch (error) {
             console.error('Local Excel read error:', error);
             toast.error(t('ExcelImport_fileReadError', 'Excel dosyası okunurken bir hata oluştu.'));
@@ -846,19 +846,18 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         return;
       }
 
-      // Çoklu seçim modunda bulut dosyası zaten seçiliyse listeden çıkar (toggle)
-      if (effectiveSelectionMode === 'multiple') {
-        const alreadySelected = selectedFiles.some((f) => f.source === 'cloud' && f.cloudFile?.id === fileId);
-        if (alreadySelected) {
-          setSelectedFiles((prev) => prev.filter((f) => !(f.source === 'cloud' && f.cloudFile?.id === fileId)));
-          return;
-        }
-        if (maxFiles && selectedFiles.length >= maxFiles) {
-          toast.error(
-            t('FileImport_maxFilesExceeded', 'En fazla {{max}} adet dosya seçebilirsiniz.', { max: maxFiles })
-          );
-          return;
-        }
+      // Bulut dosyası zaten seçiliyse listeden çıkar (toggle)
+      const alreadySelected = selectedFiles.some((f) => f.source === 'cloud' && f.cloudFile?.id === fileId);
+      if (alreadySelected && (effectiveSelectionMode === 'multiple' || !isExcelMappingMode)) {
+        setSelectedFiles((prev) => prev.filter((f) => !(f.source === 'cloud' && f.cloudFile?.id === fileId)));
+        return;
+      }
+
+      if (effectiveSelectionMode === 'multiple' && maxFiles && selectedFiles.length >= maxFiles) {
+        toast.error(
+          t('FileImport_maxFilesExceeded', 'En fazla {{max}} adet dosya seçebilirsiniz.', { max: maxFiles })
+        );
+        return;
       }
 
       const toastId = toast.loading(t('ExcelImport_downloading', 'Bulut dosyası indiriliyor...'));
@@ -886,6 +885,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
           }
           setSheets(parsedSheets);
           setActiveTab(parsedSheets[0].name);
+          setFileSourceTab('mapping');
         }
 
         const newItem: ImportedFileItem = {
@@ -900,7 +900,10 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         };
 
         setSelectedFiles((prev) => (effectiveSelectionMode === 'single' ? [newItem] : [...prev, newItem]));
-        toast.dismiss(toastId);
+        toast.success(
+          t('FileImport_cloudFileSelectedToast', '"{{name}}" bulut dosyası seçildi.', { name: fileName }),
+          { id: toastId }
+        );
       } catch (error: any) {
         console.error('Download/Read Error:', error);
         toast.dismiss(toastId);
@@ -987,6 +990,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       if (next.length === 0) {
         setSheets([]);
         setActiveTab('');
+        setFileSourceTab((curr) => (curr === 'mapping' ? 'local' : curr));
       }
       return next;
     });
@@ -996,6 +1000,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     setSelectedFiles([]);
     setSheets([]);
     setActiveTab('');
+    setFileSourceTab((curr) => (curr === 'mapping' ? 'local' : curr));
   }, []);
 
   const updateSheet = (sheetName: string, updates: Partial<ExcelSheet>) => {
@@ -1471,81 +1476,87 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     };
   }, [isBulutActive, sendToCloud, allCloudFiles, t]);
 
-  const activeTabActions = useMemo<ActionMenuItem[]>(() => {
-    if (fileSourceTab === 'cloud') {
-      return [
-        {
-          label: cloudShowFolders
-            ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
-            : t('Klasorleri_Goster', 'Klasörleri Göster'),
-          icon: cloudShowFolders ? <FolderClosed size={16} /> : <FolderTree size={16} />,
-          isDefault: true,
-          default: true,
-          variant: cloudShowFolders ? 'primary' : 'default',
-          onClick: () => setCloudShowFolders((prev) => !prev),
-          title: cloudShowFolders
-            ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
-            : t('Klasorleri_Goster', 'Klasörleri Göster'),
-        },
-      ];
-    }
+  const cardExtraActions = useMemo<ActionMenuItem[]>(() => {
+    const actions: ActionMenuItem[] = [];
 
-    return [
-      ...(isBulutActive ? [sendToCloudAction] : []),
-      {
+    if (fileSourceTab === 'cloud') {
+      actions.push({
+        label: cloudShowFolders
+          ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+          : t('Klasorleri_Goster', 'Klasörleri Göster'),
+        icon: cloudShowFolders ? <FolderClosed size={16} /> : <FolderTree size={16} />,
+        isDefault: selectedFiles.length === 0,
+        default: selectedFiles.length === 0,
+        variant: cloudShowFolders ? 'primary' : 'default',
+        onClick: () => setCloudShowFolders((prev) => !prev),
+        title: cloudShowFolders
+          ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+          : t('Klasorleri_Goster', 'Klasörleri Göster'),
+      });
+      actions.push({
+        label: t('FilesOnClouds_refresh', 'Yenile'),
+        icon: <RefreshCw size={16} />,
+        onClick: () => filesOnCloudsRef.current?.refresh(),
+      });
+    } else if (fileSourceTab === 'local' && selectedFiles.length === 0) {
+      actions.push({
         label:
           effectiveSelectionMode === 'multiple'
             ? t('FileImport_chooseFilesBtn', 'Dosyaları Seç')
             : t('ExcelImport_chooseFileBtn', 'Dosya Seç'),
         icon: <Upload size={16} />,
+        isDefault: true,
+        default: true,
+        variant: 'primary',
         onClick: () => localFileInputRef.current?.click(),
-      },
-    ];
-  }, [fileSourceTab, cloudShowFolders, isBulutActive, sendToCloudAction, effectiveSelectionMode, t]);
+      });
+    }
 
-  const cardExtraActions = useMemo<ActionMenuItem[]>(() => {
-    if (selectedFiles.length === 0) return [];
-    return [
-      ...(primaryFile && ['xlsx', 'xls', 'csv', 'ods'].includes(primaryFile.extension)
-        ? [
-          {
-            label: t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç'),
-            icon: <ExternalLink size={16} />,
-            onClick: () => handlePreviewFileInNewTab(primaryFile),
-          },
-        ]
-        : []),
-      ...(effectiveSelectionMode === 'multiple'
-        ? [
-          {
-            label: t('FileImport_addMoreFiles', 'Yeni Dosya Ekle'),
-            icon: <Plus size={16} />,
-            onClick: () => localFileInputRef.current?.click(),
-          },
-        ]
-        : []),
-      {
+    if (selectedFiles.length > 0) {
+      if (
+        primaryFile &&
+        ['xlsx', 'xls', 'csv', 'ods', 'pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(primaryFile.extension)
+      ) {
+        actions.push({
+          label: t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç'),
+          icon: <ExternalLink size={16} />,
+          onClick: () => handlePreviewFileInNewTab(primaryFile),
+        });
+      }
+
+      if (effectiveSelectionMode === 'multiple') {
+        actions.push({
+          label: t('FileImport_addMoreFiles', 'Yeni Dosya Ekle'),
+          icon: <Plus size={16} />,
+          onClick: () => localFileInputRef.current?.click(),
+        });
+      }
+
+      actions.push({
         label:
           effectiveSelectionMode === 'multiple'
             ? t('FileImport_clearSelection', 'Seçimi Temizle')
             : t('ExcelImport_changeFile', 'Başka Dosya Seç'),
         icon: <RefreshCw size={16} />,
         onClick: clearAllSelectedFiles,
-      },
-      ...(isBulutActive && hasLocalFiles
-        ? [
-          {
-            ...sendToCloudAction,
-            isDefault: false,
-            default: false,
-          },
-        ]
-        : []),
-    ];
+      });
+    }
+
+    if (isBulutActive && (fileSourceTab === 'local' || hasLocalFiles)) {
+      actions.push({
+        ...sendToCloudAction,
+        isDefault: false,
+        default: false,
+      });
+    }
+
+    return actions;
   }, [
+    fileSourceTab,
+    cloudShowFolders,
     selectedFiles.length,
-    primaryFile,
     effectiveSelectionMode,
+    primaryFile,
     handlePreviewFileInNewTab,
     clearAllSelectedFiles,
     isBulutActive,
@@ -1598,6 +1609,393 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   // Dosya seçimi ekranını mı yoksa Excel eşleştirme ekranını mı göstereceğiz?
   const showExcelMappingView = isExcelMappingMode && selectedFiles.length > 0 && sheets.length > 0;
 
+  const filterToolbarSection = (
+    <div className="flex items-center justify-between gap-12 pb-16 border-b border-glass flex-wrap">
+      <div className="flex items-center gap-12">
+        <div className="icon-box-md rounded-10 bg-primary-light text-primary flex items-center justify-center">
+          {fileSourceTab === 'cloud' ? <Cloud size={20} /> : <FolderUp size={20} />}
+        </div>
+        <div className="flex flex-col">
+          <h3 className="m-0 text-16 font-bold text-primary">
+            {fileSourceTab === 'cloud'
+              ? t('FileImport_chooseFromCloudTitle', 'Bulut Depolamanızdan Dosya Seçin')
+              : effectiveSelectionMode === 'multiple'
+                ? t('FileImport_chooseMultipleFilesTitle', 'İçeri Aktarılacak Dosyaları Belirleyin')
+                : t('FileImport_chooseSingleFileTitle', 'İçeri Aktarılacak Dosyayı Belirleyin')}
+          </h3>
+          <span className="text-12 text-secondary mt-2">
+            {t('FileImport_allowedFormatsLabel', 'İzin verilen formatlar')}: {filterBadgeLabel} •{' '}
+            {effectiveSelectionMode === 'multiple'
+              ? t('FileImport_modeMultipleBadge', 'Çoklu Seçim Aktif')
+              : t('FileImport_modeSingleBadge', 'Tekli Seçim')}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-10 flex-wrap">
+        {fileSourceTab === 'cloud' && (
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm flex items-center gap-6"
+            onClick={() => setCloudShowFolders((prev) => !prev)}
+            title={
+              cloudShowFolders
+                ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+                : t('Klasorleri_Goster', 'Klasörleri Göster')
+            }
+          >
+            {cloudShowFolders ? <FolderClosed size={15} /> : <FolderTree size={15} />}
+            <span>
+              {cloudShowFolders
+                ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+                : t('Klasorleri_Goster', 'Klasörleri Göster')}
+            </span>
+          </button>
+        )}
+
+        {effectiveAllowFilterChange && !isExcelMappingMode && (
+          <div className="flex items-center gap-8 min-w-260">
+            <Filter size={15} className="text-secondary shrink-0" />
+            <DosyaTipiFiltresiSecici
+              id="fileImportToolbarFilterSelect"
+              options={groupedFilterOptions}
+              multiple={true}
+              clearable={true}
+              value={activeFilterSelection}
+              onChange={(nextFilters) => {
+                setActiveFilterSelection(nextFilters);
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const localTabContent = (
+    <div className="excel-upload-section flex flex-col gap-16 pt-16">
+      {filterToolbarSection}
+
+      <div
+        className={`ai-file-dropzone cursor-pointer ${isDragging ? 'active' : ''}`}
+        onClick={() => localFileInputRef.current?.click()}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div className="ai-file-dropzone-icon">
+          {activeFilterSelection.length === 1 && activeFilterSelection[0] === 'excel' ? (
+            <FileSpreadsheet size={32} />
+          ) : (
+            <Files size={32} />
+          )}
+        </div>
+        <span className="font-semibold text-15 text-primary mb-4">
+          {effectiveSelectionMode === 'multiple'
+            ? t('FileImport_dropzoneMultipleTitle', 'Dosyaları Seçin veya Buraya Sürükleyip Bırakın')
+            : t('FileImport_dropzoneSingleTitle', 'Dosya Seçin veya Buraya Sürükleyip Bırakın')}
+        </span>
+        <span className="text-12 text-secondary mb-16">
+          {t('FileImport_allowedFormatsLabel', 'İzin verilen formatlar')}: {filterBadgeLabel}
+        </span>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm flex items-center gap-6 pointer-events-none"
+        >
+          <FolderUp size={15} />
+          <span>
+            {effectiveSelectionMode === 'multiple'
+              ? t('FileImport_chooseFilesBtn', 'Dosyaları Seç')
+              : t('ExcelImport_chooseFileBtn', 'Dosya Seç')}
+          </span>
+        </button>
+      </div>
+
+      {isExcelMappingMode && (
+        <div className="flex flex-row items-center gap-8 p-12 rounded-8 bg-tertiary border border-glass text-13 text-secondary">
+          <AlertCircle size={16} className="shrink-0 text-primary" />
+          <span>
+            {t(
+              'ExcelImport_headerNotice',
+              'Excel tablonuzun ilk satırının sütun başlıklarını içerdiğinden emin olun.'
+            )}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+
+  const cloudTabContent = (
+    <div className="excel-upload-section flex flex-col gap-16 pt-16">
+      {filterToolbarSection}
+
+      <div className="min-h-420 h-480 flex flex-col border border-glass rounded-12 p-8 overflow-hidden bg-surface">
+        <FilesOnClouds
+          ref={filesOnCloudsRef}
+          isOpen={true}
+          isModal={false}
+          showFolderTree={cloudShowFolders}
+          isAttachedOnly={false}
+          onAttachedOnlyChange={(val) => setCloudShowFolders(!val)}
+          isSelectMode={true}
+          selectionMode={effectiveSelectionMode}
+          selectedFileIds={selectedCloudFileIds}
+          allowedExtensions={effectiveAllowedExtensions}
+          hideToolbarActions={true}
+          documentId={effectiveDocumentId}
+          documentGuid={effectiveDocumentGuid}
+          documentType={effectiveDocumentType}
+          documentNo={effectiveDocumentNo}
+          onSelectFile={handleCloudFileSelect}
+          onToggleSelectFile={handleCloudFileSelect}
+        />
+      </div>
+    </div>
+  );
+
+  const excelMappingTabContent = (
+    <div className="excel-mapping-card pt-16">
+      <div className="flex items-center justify-between pb-16 border-b border-glass flex-wrap gap-12">
+        <div className="flex items-center gap-12">
+          <div className="icon-box-md rounded-10 bg-primary-light text-primary flex items-center justify-center">
+            <Layers size={20} />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-8">
+              <h3 className="m-0 text-16 font-bold text-primary">
+                {t('ExcelImport_sheetsAndMappingTitle', 'Sayfa ve Sütun Eşleştirme')}
+              </h3>
+              <span className="badge badge-primary text-11 font-medium">
+                {sheets.length} {t('Sayfa', 'Sayfa')}
+              </span>
+            </div>
+            <span className="text-12 text-secondary mt-2">
+              {t(
+                'ExcelImport_sheetsAndMappingDesc',
+                'İçe aktarmak istediğiniz sayfaları seçin ve sütun eşleştirmelerini tanımlayın.'
+              )}
+            </span>
+          </div>
+        </div>
+
+        {activeSheetData && (
+          <div className="flex items-center gap-12">
+            <button
+              type="button"
+              className="btn btn-primary-outline btn-sm flex items-center gap-6"
+              onClick={handleAiAutoMatch}
+              disabled={isAiMatching}
+              title={t('ExcelImport_aiAutoMatch', 'Yapay Zeka ile Otomatik Eşleştir')}
+            >
+              <Sparkles size={14} className={isAiMatching ? 'animate-spin text-accent' : 'text-accent'} />
+              <span className="font-medium">
+                {isAiMatching
+                  ? t('ExcelImport_aiMatching', 'Eşleştiriliyor...')
+                  : t('ExcelImport_aiAutoMatch', 'Yapay Zeka ile Otomatik Eşleştir')}
+              </span>
+            </button>
+            <span className="badge badge-neutral text-12 font-medium">
+              {activeSheetData.data.length} {t('satır', 'satır')}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Sheet Tabs */}
+      {sheets.length > 1 && (
+        <div className="excel-sheet-tabs-wrapper">
+          <TabLayout
+            tabs={sheets.map((s) => ({
+              id: s.name,
+              name: s.name,
+              label: s.name,
+              icon: s.isActive ? <CheckCircle2 size={14} className="text-success" /> : null,
+            }))}
+            activeTabId={activeTab}
+            onChange={(tabId: string | number) => setActiveTab(tabId as string)}
+          />
+        </div>
+      )}
+
+      {/* Active Sheet Mapping Body */}
+      {activeSheetData && (
+        <div className="flex flex-col gap-16">
+          <div className="flex items-center justify-between p-16 rounded-12 bg-tertiary border border-glass">
+            <BaseSwitch
+              id={`sheetActiveSwitch_${activeSheetData.name}`}
+              checked={activeSheetData.isActive}
+              onChange={(e) => updateSheet(activeSheetData.name, { isActive: e.target.checked })}
+              label={
+                <div className="flex items-center gap-8">
+                  <span className="font-semibold text-14 text-primary">
+                    {t('ExcelImport_importThisSheet', 'Bu Sayfayı (Sheet) İçeri Aktar')}
+                  </span>
+                  <span className="text-13 text-secondary font-medium">({activeSheetData.name})</span>
+                </div>
+              }
+            />
+            <div className="flex items-center gap-8 text-12 text-secondary font-medium">
+              <span className="badge badge-neutral">
+                {activeSheetData.validColumns.length}{' '}
+                {t('ExcelImport_detectedColumns', 'dolu sütun tespit edildi')}
+              </span>
+            </div>
+          </div>
+
+          {activeSheetData.isActive ? (
+            <div className="form-grid gap-20">
+              {(columns || []).map((col) => {
+                if (col.visibleIf) {
+                  const dependsOnValue = activeSheetData.mapping[col.visibleIf.key];
+                  if (dependsOnValue !== col.visibleIf.value) return null;
+                }
+
+                const isMapped = Boolean(activeSheetData.mapping[col.key]);
+
+                const columnDropdownOptions: DropdownOption[] =
+                  col.type === 'column'
+                    ? activeSheetData.validColumns.map((i) => {
+                        const headerLabel =
+                          activeSheetData.data.length > 0 &&
+                          activeSheetData.data[0][i] !== undefined &&
+                          activeSheetData.data[0][i] !== null &&
+                          String(activeSheetData.data[0][i]).trim() !== ''
+                            ? ` (${String(activeSheetData.data[0][i]).substring(0, 30)})`
+                            : '';
+                        return {
+                          id: String(i),
+                          value: String(i),
+                          label: `${t('ExcelImport_columnPrefix', 'Sütun')} ${XLSX.utils.encode_col(i)}${headerLabel}`,
+                        };
+                      })
+                    : [];
+
+                const selectDropdownOptions: DropdownOption[] =
+                  col.type === 'select'
+                    ? (col.options || []).map((opt) => ({
+                        id: String(opt.value),
+                        value: String(opt.value),
+                        label: opt.label,
+                      }))
+                    : [];
+
+                return (
+                  <div className="form-group flex flex-col gap-6" key={col.key}>
+                    <label className="form-field-label excel-mapping-label font-semibold text-13 text-primary">
+                      <span>
+                        {col.label} {col.required && <span className="text-danger">*</span>}
+                      </span>
+                      {isMapped && (
+                        <span className="excel-mapping-badge">
+                          <CheckCircle2 size={12} /> {t('ExcelImport_mapped', 'Eşleştirildi')}
+                        </span>
+                      )}
+                    </label>
+                    {col.type === 'column' && (
+                      <BaseDropdownSecici
+                        id={`excelMappingCol_${activeSheetData.name}_${col.key}`}
+                        options={columnDropdownOptions}
+                        value={
+                          activeSheetData.mapping[col.key] !== undefined &&
+                          activeSheetData.mapping[col.key] !== ''
+                            ? String(activeSheetData.mapping[col.key])
+                            : ''
+                        }
+                        placeholder={t('ExcelImport_selectColPlaceholder', 'Seçiniz...')}
+                        clearable={true}
+                        onChange={(val) =>
+                          updateMapping(
+                            activeSheetData.name,
+                            col.key,
+                            val !== null && val !== undefined ? String(val) : ''
+                          )
+                        }
+                      />
+                    )}
+                    {col.type === 'select' && (
+                      <BaseDropdownSecici
+                        id={`excelMappingSelect_${activeSheetData.name}_${col.key}`}
+                        options={selectDropdownOptions}
+                        value={
+                          activeSheetData.mapping[col.key] !== undefined &&
+                          activeSheetData.mapping[col.key] !== ''
+                            ? String(activeSheetData.mapping[col.key])
+                            : ''
+                        }
+                        placeholder={t('ExcelImport_selectColPlaceholder', 'Seçiniz...')}
+                        clearable={false}
+                        onChange={(val) =>
+                          updateMapping(
+                            activeSheetData.name,
+                            col.key,
+                            val !== null && val !== undefined ? String(val) : ''
+                          )
+                        }
+                      />
+                    )}
+                    {col.type === 'date' && (
+                      <DateInput
+                        className="form-input excel-mapping-select"
+                        value={activeSheetData.mapping[col.key] || ''}
+                        onChange={(e: any) =>
+                          updateMapping(
+                            activeSheetData.name,
+                            col.key,
+                            typeof e === 'string' ? e : e?.target?.value || ''
+                          )
+                        }
+                        placeholder={t('Tarih Seçiniz', 'Tarih Seçiniz')}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-16 rounded-10 bg-tertiary text-secondary text-13 text-center border border-glass">
+              {t('ExcelImport_sheetDisabledNotice', 'Bu sayfa içeri aktarılmayacak olarak işaretlendi.')}
+            </div>
+          )}
+
+          <div className="flex flex-row items-center gap-10 p-14 rounded-10 bg-tertiary border border-glass text-13 text-secondary">
+            <AlertCircle size={18} className="shrink-0 text-primary" />
+            <span>
+              {t(
+                'ExcelImport_invalidRowsNotice',
+                'Kod veya Fiyat bilgisi tutarsız olan satırlar (Örn: Boş, 0, Metin) içeri aktarım sırasında yoksayılacaktır.'
+              )}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const importPageTabs: BaseTabItem[] = [
+    {
+      id: 'local',
+      label: t('ExcelImport_tabLocal', 'Bilgisayarımdan Yükle'),
+      icon: <Upload size={16} />,
+      content: localTabContent,
+    },
+    {
+      id: 'cloud',
+      label: t('ExcelImport_tabCloud', 'Bulut Dosyalarımdan Seç'),
+      icon: <Cloud size={16} />,
+      content: cloudTabContent,
+    },
+    ...(showExcelMappingView
+      ? [
+          {
+            id: 'mapping',
+            label: `${t('ExcelImport_sheetsAndMappingTitle', 'Sayfa ve Sütun Eşleştirme')} (${sheets.length})`,
+            icon: <Layers size={16} />,
+            content: excelMappingTabContent,
+          },
+        ]
+      : []),
+  ];
+
   const cardContent = (
     <BaseCardPage
       id="fileImportCardPage"
@@ -1613,6 +2011,10 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       onSave={handleImport}
       isSaving={isImporting}
       extraDropdownActions={cardExtraActions}
+      tabs={importPageTabs}
+      activeTabId={fileSourceTab}
+      onTabChange={(tabId) => setFileSourceTab(tabId as 'local' | 'cloud' | 'mapping')}
+      hideIfSingleTab={false}
       asForm={false}
       hasExternalSettings={hasExternalSettings}
       externalSettingsComponent={externalSettingsComponent}
@@ -1634,400 +2036,75 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
           }}
         />
 
-        {!showExcelMappingView ? (
-          <div className="excel-upload-section flex flex-col gap-16">
-            {/* Üst Bilgi ve Dosya Tipi Filtre Çubuğu */}
-            <div className="flex items-center justify-between gap-12 pb-16 border-b border-glass flex-wrap">
-              <div className="flex items-center gap-12">
-                <div className="icon-box-md rounded-10 bg-primary-light text-primary flex items-center justify-center">
-                  <FolderUp size={20} />
-                </div>
-                <div className="flex flex-col">
-                  <h3 className="m-0 text-16 font-bold text-primary">
-                    {effectiveSelectionMode === 'multiple'
-                      ? t('FileImport_chooseMultipleFilesTitle', 'İçeri Aktarılacak Dosyaları Belirleyin')
-                      : t('FileImport_chooseSingleFileTitle', 'İçeri Aktarılacak Dosyayı Belirleyin')}
-                  </h3>
-                  <span className="text-12 text-secondary mt-2">
-                    {t('FileImport_allowedFormatsLabel', 'İzin verilen formatlar')}: {filterBadgeLabel} •{' '}
-                    {effectiveSelectionMode === 'multiple'
-                      ? t('FileImport_modeMultipleBadge', 'Çoklu Seçim Aktif')
-                      : t('FileImport_modeSingleBadge', 'Tekli Seçim')}
-                  </span>
-                </div>
+        {/* Seçilen Dosyalar Özeti Listesi (Hem Yerel hem Bulut Sekmesinde Ortak Gösterim) */}
+        {selectedFiles.length > 0 && fileSourceTab !== 'mapping' && (
+          <div className="surface-card p-16 rounded-12 border border-glass flex flex-col gap-12 mt-16">
+            <div className="flex items-center justify-between border-b border-glass pb-12">
+              <div className="flex items-center gap-8">
+                <FileCheck size={18} className="text-success" />
+                <h4 className="m-0 text-14 font-bold text-primary">
+                  {t('FileImport_selectedFilesHeader', 'Seçilen Dosyalar')} ({selectedFiles.length})
+                </h4>
               </div>
-
-              {/* Kullanıcıya dosya tipi filtresi seçimi açıksa */}
-              {effectiveAllowFilterChange && !isExcelMappingMode && (
-                <div className="flex items-center gap-8 min-w-260">
-                  <Filter size={15} className="text-secondary shrink-0" />
-                  <DosyaTipiFiltresiSecici
-                    id="fileImportToolbarFilterSelect"
-                    options={groupedFilterOptions}
-                    multiple={true}
-                    clearable={true}
-                    value={activeFilterSelection}
-                    onChange={(nextFilters) => {
-                      setActiveFilterSelection(nextFilters);
-                    }}
-                  />
-                </div>
-              )}
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm text-danger flex items-center gap-6 text-12"
+                onClick={clearAllSelectedFiles}
+              >
+                <Trash2 size={14} />
+                <span>{t('FileImport_clearAllBtn', 'Tümünü Temizle')}</span>
+              </button>
             </div>
 
-            {/* Kaynak Sekmeleri (Yerel / Bulut) */}
-            <div className="flex flex-col gap-16">
-              {isBulutActive && (
-                <TabLayout
-                  tabs={[
-                    {
-                      id: 'local',
-                      label: t('ExcelImport_tabLocal', 'Bilgisayarımdan Yükle'),
-                      icon: <Upload size={16} />,
-                    },
-                    {
-                      id: 'cloud',
-                      label: t('ExcelImport_tabCloud', 'Bulut Dosyalarımdan Seç'),
-                      icon: <Cloud size={16} />,
-                    },
-                  ]}
-                  activeTabId={fileSourceTab}
-                  onChange={(tabId) => setFileSourceTab(tabId as 'local' | 'cloud')}
-                  actions={activeTabActions}
-                  actionMenuProps={{ showDefaultActionAsButton: true }}
-                />
-              )}
-
-              {fileSourceTab === 'local' ? (
-                <div className="flex flex-col gap-16">
-                  <div
-                    className={`ai-file-dropzone cursor-pointer ${isDragging ? 'active' : ''}`}
-                    onClick={() => localFileInputRef.current?.click()}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                  >
-                    <div className="ai-file-dropzone-icon">
-                      {activeFilterSelection.length === 1 && activeFilterSelection[0] === 'excel' ? (
-                        <FileSpreadsheet size={32} />
-                      ) : (
-                        <Files size={32} />
-                      )}
+            <div className="flex flex-col gap-8">
+              {selectedFiles.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-10 rounded-10 bg-surface-variant border border-glass gap-12"
+                >
+                  <div className="flex items-center gap-12 min-w-0">
+                    <div className="w-36 h-36 rounded-8 bg-surface text-primary flex items-center justify-center border border-glass flex-shrink-0">
+                      {renderFileTypeIcon(item.name, 18)}
                     </div>
-                    <span className="font-semibold text-15 text-primary mb-4">
-                      {effectiveSelectionMode === 'multiple'
-                        ? t('FileImport_dropzoneMultipleTitle', 'Dosyaları Seçin veya Buraya Sürükleyip Bırakın')
-                        : t('FileImport_dropzoneSingleTitle', 'Dosya Seçin veya Buraya Sürükleyip Bırakın')}
-                    </span>
-                    <span className="text-12 text-secondary mb-16">
-                      {t('FileImport_allowedFormatsLabel', 'İzin verilen formatlar')}: {filterBadgeLabel}
-                    </span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-semibold text-13 text-primary truncate" title={item.name}>
+                        {item.name}
+                      </span>
+                      <span className="text-11 text-secondary">
+                        {formatFileBytes(item.size)} •{' '}
+                        {item.source === 'cloud'
+                          ? t('ExcelImport_sourceCloud', 'Bulut Dosyası')
+                          : t('ExcelImport_sourceLocal', 'Yerel Dosya')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-8 flex-shrink-0">
+                    {['xlsx', 'xls', 'csv', 'ods', 'pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(
+                      item.extension
+                    ) && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm text-12 flex items-center gap-4"
+                        onClick={() => handlePreviewFileInNewTab(item)}
+                        title={t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç')}
+                      >
+                        <ExternalLink size={14} />
+                        <span>{t('Onizle', 'Önizle')}</span>
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className="btn btn-primary btn-sm flex items-center gap-6 pointer-events-none"
+                      className="btn-icon-xs text-danger"
+                      onClick={() => removeSelectedFile(item.id)}
+                      title={t('Sil', 'Sil')}
                     >
-                      <FolderUp size={15} />
-                      <span>
-                        {effectiveSelectionMode === 'multiple'
-                          ? t('FileImport_chooseFilesBtn', 'Dosyaları Seç')
-                          : t('ExcelImport_chooseFileBtn', 'Dosya Seç')}
-                      </span>
+                      <Trash2 size={15} />
                     </button>
                   </div>
-
-                  {isExcelMappingMode && (
-                    <div className="flex flex-row items-center gap-8 p-12 rounded-8 bg-tertiary border border-glass text-13 text-secondary">
-                      <AlertCircle size={16} className="shrink-0 text-primary" />
-                      <span>
-                        {t(
-                          'ExcelImport_headerNotice',
-                          'Excel tablonuzun ilk satırının sütun başlıklarını içerdiğinden emin olun.'
-                        )}
-                      </span>
-                    </div>
-                  )}
                 </div>
-              ) : (
-                <div className="min-h-420 h-480 flex flex-col border border-glass rounded-12 p-8 overflow-hidden bg-surface">
-                  <FilesOnClouds
-                    ref={filesOnCloudsRef}
-                    isOpen={true}
-                    isModal={false}
-                    showFolderTree={cloudShowFolders}
-                    isAttachedOnly={!cloudShowFolders}
-                    onAttachedOnlyChange={(val) => setCloudShowFolders(!val)}
-                    isSelectMode={true}
-                    selectionMode={effectiveSelectionMode}
-                    selectedFileIds={selectedCloudFileIds}
-                    allowedExtensions={effectiveAllowedExtensions}
-                    hideToolbarActions={true}
-                    documentId={effectiveDocumentId}
-                    documentGuid={effectiveDocumentGuid}
-                    documentType={effectiveDocumentType}
-                    documentNo={effectiveDocumentNo}
-                    onSelectFile={handleCloudFileSelect}
-                    onToggleSelectFile={handleCloudFileSelect}
-                  />
-                </div>
-              )}
+              ))}
             </div>
-
-            {/* Seçilen Dosyalar Özeti Listesi (Genel Dosya Seçim Modunda) */}
-            {selectedFiles.length > 0 && (
-              <div className="surface-card p-16 rounded-12 border border-glass flex flex-col gap-12">
-                <div className="flex items-center justify-between border-b border-glass pb-12">
-                  <div className="flex items-center gap-8">
-                    <FileCheck size={18} className="text-success" />
-                    <h4 className="m-0 text-14 font-bold text-primary">
-                      {t('FileImport_selectedFilesHeader', 'Seçilen Dosyalar')} ({selectedFiles.length})
-                    </h4>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm text-danger flex items-center gap-6 text-12"
-                    onClick={clearAllSelectedFiles}
-                  >
-                    <Trash2 size={14} />
-                    <span>{t('FileImport_clearAllBtn', 'Tümünü Temizle')}</span>
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-8">
-                  {selectedFiles.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between p-10 rounded-10 bg-surface-variant border border-glass gap-12"
-                    >
-                      <div className="flex items-center gap-12 min-w-0">
-                        <div className="w-36 h-36 rounded-8 bg-surface text-primary flex items-center justify-center border border-glass flex-shrink-0">
-                          {renderFileTypeIcon(item.name, 18)}
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-semibold text-13 text-primary truncate" title={item.name}>
-                            {item.name}
-                          </span>
-                          <span className="text-11 text-secondary">
-                            {formatFileBytes(item.size)} •{' '}
-                            {item.source === 'cloud'
-                              ? t('ExcelImport_sourceCloud', 'Bulut Dosyası')
-                              : t('ExcelImport_sourceLocal', 'Yerel Dosya')}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-8 flex-shrink-0">
-                        {['xlsx', 'xls', 'csv', 'ods', 'pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(
-                          item.extension
-                        ) && (
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm text-12 flex items-center gap-4"
-                              onClick={() => handlePreviewFileInNewTab(item)}
-                              title={t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç')}
-                            >
-                              <ExternalLink size={14} />
-                              <span>{t('Onizle', 'Önizle')}</span>
-                            </button>
-                          )}
-                        <button
-                          type="button"
-                          className="btn-icon-xs text-danger"
-                          onClick={() => removeSelectedFile(item.id)}
-                          title={t('Sil', 'Sil')}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Excel Sayfa ve Sütun Eşleştirme Kartı */
-          <div className="excel-mapping-card">
-            <div className="flex items-center justify-between pb-16 border-b border-glass flex-wrap gap-12">
-              <div className="flex items-center gap-12">
-                <div className="icon-box-md rounded-10 bg-primary-light text-primary flex items-center justify-center">
-                  <Layers size={20} />
-                </div>
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-8">
-                    <h3 className="m-0 text-16 font-bold text-primary">
-                      {t('ExcelImport_sheetsAndMappingTitle', 'Sayfa ve Sütun Eşleştirme')}
-                    </h3>
-                    <span className="badge badge-primary text-11 font-medium">
-                      {sheets.length} {t('Sayfa', 'Sayfa')}
-                    </span>
-                  </div>
-                  <span className="text-12 text-secondary mt-2">
-                    {t(
-                      'ExcelImport_sheetsAndMappingDesc',
-                      'İçe aktarmak istediğiniz sayfaları seçin ve sütun eşleştirmelerini tanımlayın.'
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              {activeSheetData && (
-                <div className="flex items-center gap-12">
-                  <button
-                    type="button"
-                    className="btn btn-primary-outline btn-sm flex items-center gap-6"
-                    onClick={handleAiAutoMatch}
-                    disabled={isAiMatching}
-                    title={t('ExcelImport_aiAutoMatch', 'Yapay Zeka ile Otomatik Eşleştir')}
-                  >
-                    <Sparkles size={14} className={isAiMatching ? 'animate-spin text-accent' : 'text-accent'} />
-                    <span className="font-medium">
-                      {isAiMatching
-                        ? t('ExcelImport_aiMatching', 'Eşleştiriliyor...')
-                        : t('ExcelImport_aiAutoMatch', 'Yapay Zeka ile Otomatik Eşleştir')}
-                    </span>
-                  </button>
-                  <span className="badge badge-neutral text-12 font-medium">
-                    {activeSheetData.data.length} {t('satır', 'satır')}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Sheet Tabs */}
-            {sheets.length > 1 && (
-              <div className="excel-sheet-tabs-wrapper">
-                <TabLayout
-                  tabs={sheets.map((s) => ({
-                    id: s.name,
-                    name: s.name,
-                    label: s.name,
-                    icon: s.isActive ? <CheckCircle2 size={14} className="text-success" /> : null,
-                  }))}
-                  activeTabId={activeTab}
-                  onChange={(tabId: string | number) => setActiveTab(tabId as string)}
-                />
-              </div>
-            )}
-
-            {/* Active Sheet Mapping Body */}
-            {activeSheetData && (
-              <div className="flex flex-col gap-16">
-                <div className="flex items-center justify-between p-16 rounded-12 bg-tertiary border border-glass">
-                  <BaseSwitch
-                    id={`sheetActiveSwitch_${activeSheetData.name}`}
-                    checked={activeSheetData.isActive}
-                    onChange={(e) => updateSheet(activeSheetData.name, { isActive: e.target.checked })}
-                    label={
-                      <div className="flex items-center gap-8">
-                        <span className="font-semibold text-14 text-primary">
-                          {t('ExcelImport_importThisSheet', 'Bu Sayfayı (Sheet) İçeri Aktar')}
-                        </span>
-                        <span className="text-13 text-secondary font-medium">({activeSheetData.name})</span>
-                      </div>
-                    }
-                  />
-                  <div className="flex items-center gap-8 text-12 text-secondary font-medium">
-                    <span className="badge badge-neutral">
-                      {activeSheetData.validColumns.length}{' '}
-                      {t('ExcelImport_detectedColumns', 'dolu sütun tespit edildi')}
-                    </span>
-                  </div>
-                </div>
-
-                {activeSheetData.isActive ? (
-                  <div className="form-grid gap-20">
-                    {(columns || []).map((col) => {
-                      if (col.visibleIf) {
-                        const dependsOnValue = activeSheetData.mapping[col.visibleIf.key];
-                        if (dependsOnValue !== col.visibleIf.value) return null;
-                      }
-
-                      const isMapped = Boolean(activeSheetData.mapping[col.key]);
-
-                      return (
-                        <div className="form-group flex flex-col gap-6" key={col.key}>
-                          <label className="form-field-label excel-mapping-label font-semibold text-13 text-primary">
-                            <span>
-                              {col.label} {col.required && <span className="text-danger">*</span>}
-                            </span>
-                            {isMapped && (
-                              <span className="excel-mapping-badge">
-                                <CheckCircle2 size={12} /> {t('ExcelImport_mapped', 'Eşleştirildi')}
-                              </span>
-                            )}
-                          </label>
-                          {col.type === 'column' && (
-                            <select
-                              className="form-input excel-mapping-select"
-                              value={activeSheetData.mapping[col.key] || ''}
-                              onChange={(e) => updateMapping(activeSheetData.name, col.key, e.target.value)}
-                            >
-                              <option value="">{t('ExcelImport_selectColPlaceholder', 'Seçiniz...')}</option>
-                              {activeSheetData.validColumns.map((i) => {
-                                const headerLabel =
-                                  activeSheetData.data.length > 0 &&
-                                    activeSheetData.data[0][i] !== undefined &&
-                                    activeSheetData.data[0][i] !== null &&
-                                    String(activeSheetData.data[0][i]).trim() !== ''
-                                    ? ` (${String(activeSheetData.data[0][i]).substring(0, 30)})`
-                                    : '';
-                                return (
-                                  <option key={i} value={i}>
-                                    {t('ExcelImport_columnPrefix', 'Sütun')} {XLSX.utils.encode_col(i)}
-                                    {headerLabel}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          )}
-                          {col.type === 'select' && (
-                            <select
-                              className="form-input excel-mapping-select"
-                              value={activeSheetData.mapping[col.key] || ''}
-                              onChange={(e) => updateMapping(activeSheetData.name, col.key, e.target.value)}
-                            >
-                              {col.options?.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                          {col.type === 'date' && (
-                            <DateInput
-                              className="form-input excel-mapping-select"
-                              value={activeSheetData.mapping[col.key] || ''}
-                              onChange={(e: any) =>
-                                updateMapping(
-                                  activeSheetData.name,
-                                  col.key,
-                                  typeof e === 'string' ? e : e?.target?.value || ''
-                                )
-                              }
-                              placeholder={t('Tarih Seçiniz', 'Tarih Seçiniz')}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="p-16 rounded-10 bg-tertiary text-secondary text-13 text-center border border-glass">
-                    {t('ExcelImport_sheetDisabledNotice', 'Bu sayfa içeri aktarılmayacak olarak işaretlendi.')}
-                  </div>
-                )}
-
-                <div className="flex flex-row items-center gap-10 p-14 rounded-10 bg-tertiary border border-glass text-13 text-secondary">
-                  <AlertCircle size={18} className="shrink-0 text-primary" />
-                  <span>
-                    {t(
-                      'ExcelImport_invalidRowsNotice',
-                      'Kod veya Fiyat bilgisi tutarsız olan satırlar (Örn: Boş, 0, Metin) içeri aktarım sırasında yoksayılacaktır.'
-                    )}
-                  </span>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

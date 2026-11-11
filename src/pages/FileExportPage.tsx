@@ -28,13 +28,14 @@ import { toast } from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
   BaseCardPage,
+  BaseDropdownSecici,
   BaseSwitch,
   TabLayout,
   CloudDirectoryView,
   BasePromptDialog,
   FileUploadProgressBar,
   type ActionMenuItem,
-  useModulGate,
+  type DropdownOption,
 } from '@akalin/ui';
 import { useStorageModule } from '../adapters/StorageServiceContext';
 import { ProviderLogo } from '../logos/ProviderLogo';
@@ -189,8 +190,7 @@ export const FileExportPage: React.FC<FileExportPageProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const { adapter } = useStorageModule();
-  const { isActive: modulGateActive } = useModulGate('MOD_BULUT_DEPOLAMA');
-  const isBulutActive = Boolean(modulGateActive);
+  const isBulutActive = true;
 
   const isExportRoute =
     location.pathname.endsWith('/file-export') ||
@@ -774,17 +774,23 @@ export const FileExportPage: React.FC<FileExportPageProps> = ({
                 <label className="form-field-label font-semibold text-13 text-primary">
                   {t('FileExport_formatLabel', 'Dosya Formatı')}
                 </label>
-                <select
-                  className="form-input"
+                <BaseDropdownSecici
+                  id="fileExportFormatSelect"
+                  options={availableFormats.map(
+                    (fmt): DropdownOption => ({
+                      id: fmt,
+                      value: fmt,
+                      label: t(`FileExport_fmt_${fmt}`, FORMAT_LABELS[fmt]?.label || fmt.toUpperCase()),
+                    })
+                  )}
                   value={selectedFormat}
-                  onChange={(e) => setSelectedFormat(e.target.value as ExportFormatType)}
-                >
-                  {availableFormats.map((fmt) => (
-                    <option key={fmt} value={fmt}>
-                      {t(`FileExport_fmt_${fmt}`, FORMAT_LABELS[fmt]?.label || fmt.toUpperCase())}
-                    </option>
-                  ))}
-                </select>
+                  clearable={false}
+                  onChange={(val) => {
+                    if (val) {
+                      setSelectedFormat(val as ExportFormatType);
+                    }
+                  }}
+                />
               </div>
             )}
           </div>
@@ -988,7 +994,7 @@ export const FileExportPage: React.FC<FileExportPageProps> = ({
     const contentArea =
       typeof document !== 'undefined' ? (document.querySelector('.content-area') as HTMLElement) : null;
     if (contentArea && getComputedStyle(contentArea).position === 'static') {
-      contentArea.style.position = 'relative';
+      contentArea.classList.add('relative');
     }
 
     const modalElement = <div className="excel-import-modal-wrapper">{cardContent}</div>;
