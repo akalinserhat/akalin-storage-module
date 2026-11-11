@@ -11,6 +11,8 @@ import {
   GetFilesParams,
   GetFoldersParams,
   IStorageServiceAdapter,
+  RagConvertResultDTO,
+  RagSyncAllResultDTO,
   SettingKeyValueDTO,
   ShowAlertFn,
   StorageIntegrationDTO,
@@ -199,6 +201,13 @@ export function createRestStorageAdapter(options?: {
         yuklemeTarihi: f.yuklemeTarihi ?? f.olusturulmaTarihi,
         provider: f.provider,
         klasorId: f.klasorId ?? f.bulutKlasorId ?? null,
+        ragDestekleniyorMu: f.ragDestekleniyorMu !== undefined ? Boolean(f.ragDestekleniyorMu) : undefined,
+        ragAktarildiMi: Boolean(f.ragAktarildiMi),
+        ragParcaSayisi: Number(f.ragParcaSayisi ?? 0),
+        ragSayfaSayisi: Number(f.ragSayfaSayisi ?? 0),
+        ragTokenSayisi: Number(f.ragTokenSayisi ?? 0),
+        ragGuncellenmeTarihi: f.ragGuncellenmeTarihi,
+        ragDocId: f.ragDocId,
       }));
     },
 
@@ -311,6 +320,22 @@ export function createRestStorageAdapter(options?: {
         headers: getHeaders(),
       });
       await handleJson(res);
+    },
+
+    async convertFileToRag(id: number): Promise<RagConvertResultDTO> {
+      const res = await doFetch(`${apiPrefix}/Dosyalar/${id}/RagAktar`, {
+        method: 'POST',
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
+      });
+      return await handleJson(res);
+    },
+
+    async syncAllFilesToRag(): Promise<RagSyncAllResultDTO> {
+      const res = await doFetch(`${apiPrefix}/Dosyalar/RagEsitle`, {
+        method: 'POST',
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
+      });
+      return await handleJson(res);
     },
 
     async getSettingByKey(key: string): Promise<SettingKeyValueDTO | null> {
@@ -437,6 +462,39 @@ export function createLocalStorageStorageAdapter(options?: {
     },
     async deleteFile(id: number) {
       files = files.filter((f) => f.id !== id);
+    },
+    async convertFileToRag(id: number): Promise<RagConvertResultDTO> {
+      const file = files.find((f) => f.id === id);
+      if (file) {
+        file.ragAktarildiMi = true;
+        file.ragParcaSayisi = 12;
+        file.ragSayfaSayisi = 1;
+        file.ragTokenSayisi = 1850;
+      }
+      return {
+        success: true,
+        mesaj: 'Dosya başarıyla RAG veritabanına aktarıldı.',
+        ragAktarildiMi: true,
+        ragSayfaSayisi: 1,
+        ragParcaSayisi: 12,
+        ragTokenSayisi: 1850,
+      };
+    },
+    async syncAllFilesToRag(): Promise<RagSyncAllResultDTO> {
+      let count = 0;
+      files.forEach((f) => {
+        if (!f.ragAktarildiMi) {
+          f.ragAktarildiMi = true;
+          f.ragParcaSayisi = 8;
+          count++;
+        }
+      });
+      return {
+        success: true,
+        indexedCount: count,
+        removedCount: 0,
+        mesaj: `${count} dosya RAG veritabanına aktarıldı.`,
+      };
     },
     async getSettingByKey(key: string) {
       try {

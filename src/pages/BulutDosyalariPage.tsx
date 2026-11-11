@@ -9,7 +9,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Cloud, CloudOff, Settings, RefreshCw, Upload, FolderPlus, HardDrive, Paperclip } from 'lucide-react';
+import { Cloud, CloudOff, Settings, RefreshCw, Upload, FolderPlus, HardDrive, Paperclip, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BaseCardPage, ActionMenu, BaseSwitch } from '@akalin/ui';
 import FilesOnClouds, { FilesOnCloudsHandle } from '../components/FilesOnClouds';
@@ -218,6 +218,11 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
                 label: t('BulutDosyalari_analizEt', 'Bulut Dosyalarını Analiz Et'),
                 icon: <RefreshCw size={16} className={isAnalyzing ? 'animate-spin' : ''} />,
                 onClick: handleAnalyzeCloudFiles,
+              },
+              {
+                label: t('FilesOnClouds_convertPendingToRag', "Eksik Dosyaları RAG'a Aktar"),
+                icon: <Sparkles size={16} />,
+                onClick: () => filesOnCloudsRef.current?.convertPendingToRag?.(),
               },
               {
                 label: t('FilesOnClouds_refresh', 'Yenile'),

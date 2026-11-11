@@ -37,6 +37,30 @@ export interface CloudFileItem {
   belgeGuid?: string;
   belgeNo?: string;
   iconUrl?: string;
+  ragDestekleniyorMu?: boolean;
+  ragAktarildiMi?: boolean;
+  ragParcaSayisi?: number;
+  ragSayfaSayisi?: number;
+  ragTokenSayisi?: number;
+  ragGuncellenmeTarihi?: string;
+  ragDocId?: string;
+}
+
+export interface RagConvertResultDTO {
+  success: boolean;
+  mesaj?: string;
+  docId?: string;
+  ragAktarildiMi?: boolean;
+  ragSayfaSayisi?: number;
+  ragParcaSayisi?: number;
+  ragTokenSayisi?: number;
+}
+
+export interface RagSyncAllResultDTO {
+  success: boolean;
+  indexedCount?: number;
+  removedCount?: number;
+  mesaj?: string;
 }
 
 export interface StorageProviderDefinition {
@@ -180,6 +204,8 @@ export interface IStorageServiceAdapter {
   downloadFile?(id: number): Promise<ArrayBuffer>;
   renameFile(id: number, yeniAd: string): Promise<CloudFileItem>;
   deleteFile(id: number): Promise<void>;
+  convertFileToRag?(id: number): Promise<RagConvertResultDTO>;
+  syncAllFilesToRag?(): Promise<RagSyncAllResultDTO>;
   getSettingByKey?(key: string): Promise<SettingKeyValueDTO | null>;
   saveSettingByKey?(key: string, data: SettingKeyValueDTO): Promise<void>;
 }

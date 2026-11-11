@@ -23,6 +23,9 @@ import {
   File as FileGenericIcon,
   CheckCircle2,
   Circle,
+  Sparkles,
+  AlertCircle,
+  Check,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -32,6 +35,8 @@ import {
   CloudDirectoryView,
   BaseSwitch,
   AlertDialog,
+  BaseProgressBar,
+  BaseButton,
 } from '@akalin/ui';
 import UploadToCloud from './UploadToCloud';
 import { useStorageModule } from '../adapters/StorageServiceContext';
@@ -51,6 +56,28 @@ export const formatFileBytes = (bytes: number, decimals = 2) => {
 export const getFileExtension = (fileName?: string): string => {
   if (!fileName || !fileName.includes('.')) return '';
   return (fileName.split('.').pop() || '').toLowerCase().trim();
+};
+
+const RAG_SUPPORTED_EXTENSIONS = new Set([
+  'pdf',
+  'doc',
+  'docx',
+  'txt',
+  'md',
+  'csv',
+  'xls',
+  'xlsx',
+  'pptx',
+  'rtf',
+  'json',
+]);
+
+export const isRagSupportedFile = (file: CloudFileItem): boolean => {
+  if (file.ragDestekleniyorMu !== undefined) {
+    return file.ragDestekleniyorMu;
+  }
+  const ext = getFileExtension(file.dosyaAdi);
+  return RAG_SUPPORTED_EXTENSIONS.has(ext);
 };
 
 export const renderFileTypeIcon = (fileName?: string, size = 18) => {
@@ -151,8 +178,27 @@ export interface FilesOnCloudsHandle {
   openCreateFolder: () => void;
   refresh: () => void;
   analyze: () => void;
+  convertPendingToRag?: () => void;
   openLocalFilePicker?: () => void;
   setIsAttachedOnly?: (val: boolean) => void;
+}
+
+interface RagConversionState {
+  isActive: boolean;
+  mode: 'single' | 'batch';
+  targetFile: CloudFileItem | null;
+  totalFiles: number;
+  processedFiles: number;
+  progress: number;
+  activeStep: 1 | 2 | 3 | 4;
+  status: 'running' | 'completed' | 'error';
+  message: string;
+  errorDetail?: string;
+  stats?: {
+    pageCount: number;
+    chunkCount: number;
+    tokenCount: number;
+  };
 }
 
 export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnCloudsProps>(
@@ -228,7 +274,28 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       isDeleting: false,
     });
 
+    const [ragConversionState, setRagConversionState] = useState<RagConversionState>({
+      isActive: false,
+      mode: 'single',
+      targetFile: null,
+      totalFiles: 1,
+      processedFiles: 0,
+      progress: 0,
+      activeStep: 1,
+      status: 'running',
+      message: '',
+    });
+
+    const ragTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const localFileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+      return () => {
+        if (ragTimerRef.current) {
+          clearInterval(ragTimerRef.current);
+        }
+      };
+    }, []);
 
     const notify = (type: 'success' | 'error' | 'info' | 'warning', msg: string) => {
       if (onNotify) {
@@ -414,6 +481,206 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       }
     };
 
+    const handleConvertFileToRag = useCallback(
+      async (file: CloudFileItem) => {
+        if (!adapter.convertFileToRag) {
+          notify('error', t('FilesOnClouds_ragNotSupportedByAdapter', 'RAG dönüşüm servisi tanımlı değil.'));
+          return;
+        }
+
+        if (ragTimerRef.current) {
+          clearInterval(ragTimerRef.current);
+          ragTimerRef.current = null;
+        }
+
+        setRagConversionState({
+          isActive: true,
+          mode: 'single',
+          targetFile: file,
+          totalFiles: 1,
+          processedFiles: 0,
+          progress: 14,
+          activeStep: 1,
+          status: 'running',
+          message: t('FilesOnClouds_ragStep1Desc', 'Bulut sürücüsünden dosya verisi indiriliyor...'),
+        });
+
+        let simulatedProgress = 14;
+        ragTimerRef.current = setInterval(() => {
+          simulatedProgress = Math.min(88, simulatedProgress + 6);
+          const nextStep: 1 | 2 | 3 | 4 =
+            simulatedProgress < 35 ? 1 : simulatedProgress < 62 ? 2 : 3;
+          const nextMsg =
+            nextStep === 1
+              ? t('FilesOnClouds_ragStep1Desc', 'Bulut sürücüsünden dosya verisi indiriliyor...')
+              : nextStep === 2
+                ? t('FilesOnClouds_ragStep2Desc', 'Döküman sayfaları ve tablolar ayrıştırılıyor...')
+                : t(
+                    'FilesOnClouds_ragStep3Desc',
+                    'Metin parçalanıyor (Chunking) ve 384 boyutlu vektörler hesaplanıyor...'
+                  );
+
+          setRagConversionState((prev) => {
+            if (prev.status !== 'running') return prev;
+            return {
+              ...prev,
+              progress: simulatedProgress,
+              activeStep: nextStep,
+              message: nextMsg,
+            };
+          });
+        }, 280);
+
+        try {
+          const res = await adapter.convertFileToRag(file.id);
+          if (ragTimerRef.current) {
+            clearInterval(ragTimerRef.current);
+            ragTimerRef.current = null;
+          }
+
+          if (!res || res.success === false) {
+            const errText =
+              res?.mesaj || t('FilesOnClouds_ragConvertError', 'Dosya RAG veritabanına aktarılırken bir hata oluştu.');
+            setRagConversionState((prev) => ({
+              ...prev,
+              status: 'error',
+              errorDetail: errText,
+              message: errText,
+            }));
+            notify('error', errText);
+            return;
+          }
+
+          setRagConversionState((prev) => ({
+            ...prev,
+            processedFiles: 1,
+            progress: 100,
+            activeStep: 4,
+            status: 'completed',
+            message:
+              res.mesaj ||
+              t('FilesOnClouds_ragConvertSuccess', 'Döküman başarıyla PostgreSQL (pgvector) RAG veritabanına aktarıldı.'),
+            stats: {
+              pageCount: res.ragSayfaSayisi ?? 1,
+              chunkCount: res.ragParcaSayisi ?? 1,
+              tokenCount: res.ragTokenSayisi ?? 0,
+            },
+          }));
+
+          setFiles((prev) =>
+            prev.map((item) =>
+              item.id === file.id
+                ? {
+                    ...item,
+                    ragAktarildiMi: true,
+                    ragSayfaSayisi: res.ragSayfaSayisi ?? item.ragSayfaSayisi ?? 1,
+                    ragParcaSayisi: res.ragParcaSayisi ?? item.ragParcaSayisi ?? 1,
+                    ragTokenSayisi: res.ragTokenSayisi ?? item.ragTokenSayisi ?? 0,
+                    ragDocId: res.docId ?? item.ragDocId,
+                  }
+                : item
+            )
+          );
+
+          notify(
+            'success',
+            res.mesaj || t('FilesOnClouds_ragConvertSuccess', 'Döküman başarıyla PostgreSQL (pgvector) RAG veritabanına aktarıldı.')
+          );
+          fetchFiles();
+        } catch (err: any) {
+          if (ragTimerRef.current) {
+            clearInterval(ragTimerRef.current);
+            ragTimerRef.current = null;
+          }
+          const errText =
+            err?.message || t('FilesOnClouds_ragConvertError', 'Dosya RAG veritabanına aktarılırken bir hata oluştu.');
+          setRagConversionState((prev) => ({
+            ...prev,
+            status: 'error',
+            errorDetail: errText,
+            message: errText,
+          }));
+          notify('error', errText);
+        }
+      },
+      [adapter, fetchFiles, t]
+    );
+
+    const handleConvertAllPendingToRag = useCallback(async () => {
+      if (!adapter.convertFileToRag) return;
+      const pendingFiles = filteredFiles.filter((f) => isRagSupportedFile(f) && !f.ragAktarildiMi);
+      if (pendingFiles.length === 0) {
+        notify('info', t('FilesOnClouds_ragAllAlreadyIndexed', 'Listedeki tüm uygun dökümanlar zaten RAG veritabanına aktarılmış.'));
+        return;
+      }
+
+      if (pendingFiles.length === 1) {
+        await handleConvertFileToRag(pendingFiles[0]);
+        return;
+      }
+
+      if (ragTimerRef.current) {
+        clearInterval(ragTimerRef.current);
+        ragTimerRef.current = null;
+      }
+
+      let totalPages = 0;
+      let totalChunks = 0;
+      let totalTokens = 0;
+      let successCount = 0;
+
+      for (let i = 0; i < pendingFiles.length; i++) {
+        const currentFile = pendingFiles[i];
+        const basePct = Math.round((i / pendingFiles.length) * 100);
+
+        setRagConversionState({
+          isActive: true,
+          mode: 'batch',
+          targetFile: currentFile,
+          totalFiles: pendingFiles.length,
+          processedFiles: i,
+          progress: Math.max(10, basePct + 12),
+          activeStep: 2,
+          status: 'running',
+          message: `${i + 1} / ${pendingFiles.length}: ${currentFile.dosyaAdi}`,
+        });
+
+        try {
+          const res = await adapter.convertFileToRag(currentFile.id);
+          if (res && res.success !== false) {
+            successCount++;
+            totalPages += res.ragSayfaSayisi ?? 1;
+            totalChunks += res.ragParcaSayisi ?? 1;
+            totalTokens += res.ragTokenSayisi ?? 0;
+          }
+        } catch {
+          // Tekil dosya hatasında diğer dosyalara devam et
+        }
+      }
+
+      await fetchFiles();
+
+      setRagConversionState((prev) => ({
+        ...prev,
+        processedFiles: pendingFiles.length,
+        progress: 100,
+        activeStep: 4,
+        status: successCount > 0 ? 'completed' : 'error',
+        errorDetail:
+          successCount === 0
+            ? t('FilesOnClouds_ragConvertError', 'Dosyalar RAG veritabanına aktarılırken bir hata oluştu.')
+            : undefined,
+        message: t('FilesOnClouds_ragBatchSuccess', '{{count}} döküman başarıyla RAG veritabanına aktarıldı.', {
+          count: successCount,
+        }),
+        stats: {
+          pageCount: totalPages,
+          chunkCount: totalChunks,
+          tokenCount: totalTokens,
+        },
+      }));
+    }, [adapter, filteredFiles, handleConvertFileToRag, fetchFiles, t]);
+
     const handleRowSelection = useCallback(
       (row: CloudFileItem) => {
         if (selectionMode === 'multiple' && onToggleSelectFile) {
@@ -435,6 +702,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
         fetchFiles();
       },
       analyze: handleAnalyze,
+      convertPendingToRag: handleConvertAllPendingToRag,
       openLocalFilePicker: () => localFileInputRef.current?.click(),
       setIsAttachedOnly: handleAttachedOnlyToggle,
     }));
@@ -491,6 +759,66 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
           },
         },
         {
+          id: 'ragDurumu',
+          header: t('FilesOnClouds_colRagStatus', 'RAG Durumu'),
+          accessor: 'ragAktarildiMi',
+          render: (row: CloudFileItem) => {
+            const isSupported = isRagSupportedFile(row);
+            if (!isSupported) {
+              return (
+                <div className="rag-status-cell">
+                  <span className="rag-status-badge is-unsupported">
+                    <span>{t('FilesOnClouds_ragUnsupported', 'Desteklenmiyor')}</span>
+                  </span>
+                </div>
+              );
+            }
+
+            if (row.ragAktarildiMi) {
+              return (
+                <div className="rag-status-cell">
+                  <span
+                    className="rag-status-badge is-indexed"
+                    title={t('FilesOnClouds_ragIndexedTooltip', 'PostgreSQL (pgvector) RAG veritabanında aktif')}
+                  >
+                    <CheckCircle2 size={14} />
+                    <span>{t('FilesOnClouds_ragIndexed', 'RAG Aktif')}</span>
+                  </span>
+                  {(row.ragParcaSayisi ?? 0) > 0 && (
+                    <span className="rag-chunk-meta">
+                      {row.ragParcaSayisi} {t('FilesOnClouds_ragChunkUnit', 'parça')}
+                    </span>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div className="rag-status-cell" onClick={(e) => e.stopPropagation()}>
+                <span
+                  className="rag-status-badge is-pending"
+                  title={t('FilesOnClouds_ragNotIndexedTooltip', 'Bu döküman henüz RAG vektör veritabanına aktarılmamış')}
+                >
+                  <AlertCircle size={14} />
+                  <span>{t('FilesOnClouds_ragNotIndexed', 'Aktarılmadı')}</span>
+                </span>
+                <button
+                  type="button"
+                  className="rag-convert-trigger-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleConvertFileToRag(row);
+                  }}
+                  title={t('FilesOnClouds_convertToRagTooltip', 'Bu dökümanı şimdi RAG vektör veritabanına aktar')}
+                >
+                  <Sparkles size={13} />
+                  <span>{t('FilesOnClouds_convertToRagBtn', "RAG'a Aktar")}</span>
+                </button>
+              </div>
+            );
+          },
+        },
+        {
           id: 'provider',
           header: t('FilesOnClouds_colProvider', 'Sağlayıcı'),
           accessor: 'provider',
@@ -508,51 +836,65 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
           header: '',
           accessor: 'id',
           width: '50px',
-          render: (row: CloudFileItem) => (
-            <ActionMenu
-              actions={[
-                ...(isSelectMode
-                  ? [
-                    {
-                      label:
-                        selectionMode === 'multiple' && selectedFileIds.includes(row.id)
-                          ? t('FilesOnClouds_unselect', 'Seçimi Kaldır')
-                          : t('FilesOnClouds_select', 'Seç'),
-                      icon: <Paperclip size={15} />,
-                      onClick: () => handleRowSelection(row),
+          render: (row: CloudFileItem) => {
+            const isSupported = isRagSupportedFile(row);
+            return (
+              <ActionMenu
+                actions={[
+                  ...(isSelectMode
+                    ? [
+                      {
+                        label:
+                          selectionMode === 'multiple' && selectedFileIds.includes(row.id)
+                            ? t('FilesOnClouds_unselect', 'Seçimi Kaldır')
+                            : t('FilesOnClouds_select', 'Seç'),
+                        icon: <Paperclip size={15} />,
+                        onClick: () => handleRowSelection(row),
+                      },
+                    ]
+                    : []),
+                  ...(isSupported
+                    ? [
+                      {
+                        label: row.ragAktarildiMi
+                          ? t('FilesOnClouds_reconvertToRag', "RAG'ı Güncelle / Yeniden Aktar")
+                          : t('FilesOnClouds_convertToRagBtn', "RAG'a Aktar"),
+                        icon: <Sparkles size={15} />,
+                        onClick: () => handleConvertFileToRag(row),
+                      },
+                    ]
+                    : []),
+                  ...(row.dosyaUrl
+                    ? [
+                      {
+                        label: t('FilesOnClouds_open', 'Aç / Görüntüle'),
+                        icon: <ExternalLink size={15} />,
+                        onClick: () => window.open(row.dosyaUrl, '_blank'),
+                      },
+                    ]
+                    : []),
+                  {
+                    label: t('FilesOnClouds_rename', 'Yeniden Adlandır'),
+                    icon: <Edit2 size={15} />,
+                    onClick: () => {
+                      setRenamingFile(row);
+                      setNewFileName(row.dosyaAdi);
+                      setIsRenameOpen(true);
                     },
-                  ]
-                  : []),
-                ...(row.dosyaUrl
-                  ? [
-                    {
-                      label: t('FilesOnClouds_open', 'Aç / Görüntüle'),
-                      icon: <ExternalLink size={15} />,
-                      onClick: () => window.open(row.dosyaUrl, '_blank'),
-                    },
-                  ]
-                  : []),
-                {
-                  label: t('FilesOnClouds_rename', 'Yeniden Adlandır'),
-                  icon: <Edit2 size={15} />,
-                  onClick: () => {
-                    setRenamingFile(row);
-                    setNewFileName(row.dosyaAdi);
-                    setIsRenameOpen(true);
                   },
-                },
-                {
-                  label: t('FilesOnClouds_delete', 'Sil'),
-                  icon: <Trash2 size={15} />,
-                  danger: true,
-                  onClick: () => handleDeleteFile(row),
-                },
-              ]}
-            />
-          ),
+                  {
+                    label: t('FilesOnClouds_delete', 'Sil'),
+                    icon: <Trash2 size={15} />,
+                    danger: true,
+                    onClick: () => handleDeleteFile(row),
+                  },
+                ]}
+              />
+            );
+          },
         },
       ],
-      [t, isSelectMode, selectionMode, selectedFileIds, handleRowSelection]
+      [t, isSelectMode, selectionMode, selectedFileIds, handleRowSelection, handleConvertFileToRag]
     );
 
     if (!isOpen) return null;
@@ -632,49 +974,236 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
           </div>
         )}
 
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          {shouldShowFolderTree && (
-            <div className="w-260 border-r border-glass p-16 overflow-y-auto flex-shrink-0 bg-surface">
-              <div className="flex items-center justify-between mb-12">
-                <span className="text-12 font-semibold text-secondary uppercase tracking-wider">
-                  {t('FilesOnClouds_folders', 'Klasörler')}
-                </span>
-                <button
-                  type="button"
-                  className="btn-icon-xs text-secondary hover:text-primary"
-                  onClick={() => setIsCreateFolderOpen(true)}
-                  title={t('FilesOnClouds_addFolderTitle', 'Yeni Klasör')}
+        {ragConversionState.isActive ? (
+          <div className="rag-progress-page fade-in">
+            <div className="rag-progress-card">
+              <div className="rag-progress-header">
+                <div
+                  className={`rag-progress-icon-box ${
+                    ragConversionState.status === 'completed'
+                      ? 'is-success'
+                      : ragConversionState.status === 'error'
+                        ? 'is-error'
+                        : ''
+                  }`}
                 >
-                  <FolderPlus size={15} />
-                </button>
+                  {ragConversionState.status === 'completed' ? (
+                    <CheckCircle2 size={32} />
+                  ) : ragConversionState.status === 'error' ? (
+                    <AlertCircle size={32} />
+                  ) : (
+                    <RefreshCw size={30} className="animate-spin" />
+                  )}
+                </div>
+
+                <h3 className="rag-progress-title">
+                  {ragConversionState.status === 'completed'
+                    ? t('FilesOnClouds_ragProgressTitleSuccess', 'RAG Vektör Dönüşümü Tamamlandı')
+                    : ragConversionState.status === 'error'
+                      ? t('FilesOnClouds_ragProgressTitleError', 'RAG Dönüşümü Tamamlanamadı')
+                      : t('FilesOnClouds_ragProgressTitle', 'RAG Vektör Dönüşümü & İndeksleme')}
+                </h3>
+
+                <p className="rag-progress-subtitle">
+                  {ragConversionState.status === 'completed'
+                    ? t(
+                        'FilesOnClouds_ragProgressSubtitleSuccess',
+                        'Döküman parçalandı, 384 boyutlu AI vektörlerine dönüştürüldü ve PostgreSQL (pgvector) RAG veritabanına kaydedildi.'
+                      )
+                    : t(
+                        'FilesOnClouds_ragProgressSubtitle',
+                        'Dosya bulut depolamadan okunarak yapay zeka vektör veritabanına (PostgreSQL pgvector) aktarılıyor.'
+                      )}
+                </p>
               </div>
-              <CloudDirectoryView
-                folders={folders}
-                selectedFolder={selectedFolder}
-                onSelectFolder={(folder) => {
-                  setSelectedFolder(folder);
-                  setSelectedFolderId(folder?.id || null);
-                }}
-                showAddFolderButton={true}
-                onAddFolder={() => setIsCreateFolderOpen(true)}
+
+              {ragConversionState.targetFile && (
+                <div className="rag-progress-file-banner">
+                  <div className="rag-progress-file-icon">
+                    {renderFileTypeIcon(ragConversionState.targetFile.dosyaAdi, 20)}
+                  </div>
+                  <div className="rag-progress-file-info">
+                    <span className="rag-progress-file-name" title={ragConversionState.targetFile.dosyaAdi}>
+                      {ragConversionState.targetFile.dosyaAdi}
+                    </span>
+                    <span className="rag-progress-file-meta">
+                      {formatFileBytes(ragConversionState.targetFile.boyut)}
+                      {ragConversionState.mode === 'batch' &&
+                        ` • ${ragConversionState.processedFiles} / ${ragConversionState.totalFiles}`}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <BaseProgressBar
+                progress={ragConversionState.progress}
+                colorClass={
+                  ragConversionState.status === 'error'
+                    ? 'bg-danger'
+                    : ragConversionState.status === 'completed'
+                      ? 'bg-success'
+                      : 'bg-primary'
+                }
+                height={10}
+                labelLeft={ragConversionState.message}
+                labelRight={`%${Math.round(ragConversionState.progress)}`}
+              />
+
+              <div className="rag-progress-steps">
+                {[
+                  {
+                    step: 1,
+                    title: t('FilesOnClouds_ragStep1Title', 'Bulut Depolamadan İndirme'),
+                    desc: t('FilesOnClouds_ragStep1Desc', 'Bulut sürücüsünden dosya verisi indiriliyor...'),
+                  },
+                  {
+                    step: 2,
+                    title: t('FilesOnClouds_ragStep2Title', 'Döküman & Sayfa Ayrıştırma'),
+                    desc: t('FilesOnClouds_ragStep2Desc', 'Döküman sayfaları ve tablolar ayrıştırılıyor...'),
+                  },
+                  {
+                    step: 3,
+                    title: t('FilesOnClouds_ragStep3Title', 'Parçalama (Chunking) & Vektör Üretimi'),
+                    desc: t(
+                      'FilesOnClouds_ragStep3Desc',
+                      'Metin parçalanıyor (Chunking) ve 384 boyutlu vektörler hesaplanıyor...'
+                    ),
+                  },
+                  {
+                    step: 4,
+                    title: t('FilesOnClouds_ragStep4Title', 'PostgreSQL (pgvector) RAG Kaydı'),
+                    desc: t('FilesOnClouds_ragStep4Desc', 'Vektör indeksleri RAG veritabanına kaydediliyor...'),
+                  },
+                ].map((item) => {
+                  const isDone =
+                    ragConversionState.status === 'completed' || ragConversionState.activeStep > item.step;
+                  const isError =
+                    ragConversionState.status === 'error' && ragConversionState.activeStep === item.step;
+                  const isActive =
+                    ragConversionState.status === 'running' && ragConversionState.activeStep === item.step;
+                  const stateClass = isDone
+                    ? 'is-done'
+                    : isError
+                      ? 'is-error'
+                      : isActive
+                        ? 'is-active'
+                        : 'is-waiting';
+
+                  return (
+                    <div key={item.step} className={`rag-step-item ${stateClass}`}>
+                      <div className="rag-step-indicator">
+                        {isDone ? <Check size={14} /> : item.step}
+                      </div>
+                      <div className="rag-step-text">
+                        <span className="rag-step-title">{item.title}</span>
+                        <span className="rag-step-desc">{item.desc}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {ragConversionState.status === 'completed' && ragConversionState.stats && (
+                <div className="rag-progress-stats-grid">
+                  <div className="rag-progress-stat-box">
+                    <span className="rag-progress-stat-val">{ragConversionState.stats.pageCount}</span>
+                    <span className="rag-progress-stat-label">
+                      {t('FilesOnClouds_ragStatPages', 'Sayfa Sayısı')}
+                    </span>
+                  </div>
+                  <div className="rag-progress-stat-box">
+                    <span className="rag-progress-stat-val">{ragConversionState.stats.chunkCount}</span>
+                    <span className="rag-progress-stat-label">
+                      {t('FilesOnClouds_ragStatChunks', 'Vektör Parçası (Chunk)')}
+                    </span>
+                  </div>
+                  <div className="rag-progress-stat-box">
+                    <span className="rag-progress-stat-val">{ragConversionState.stats.tokenCount}</span>
+                    <span className="rag-progress-stat-label">
+                      {t('FilesOnClouds_ragStatTokens', 'Toplam Token')}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {ragConversionState.status === 'error' && ragConversionState.errorDetail && (
+                <div className="rag-progress-error-box">{ragConversionState.errorDetail}</div>
+              )}
+
+              {ragConversionState.status !== 'running' && (
+                <div className="rag-progress-footer">
+                  {ragConversionState.status === 'error' && ragConversionState.targetFile && (
+                    <BaseButton
+                      type="button"
+                      className="btn-outline-secondary"
+                      icon={<RefreshCw size={15} />}
+                      text={t('Tekrar_Dene', 'Tekrar Dene')}
+                      onClick={() =>
+                        ragConversionState.targetFile && handleConvertFileToRag(ragConversionState.targetFile)
+                      }
+                    />
+                  )}
+                  <BaseButton
+                    type="button"
+                    className="btn-primary"
+                    icon={<Check size={16} />}
+                    text={t('FilesOnClouds_ragBackToList', 'Dosya Listesine Dön')}
+                    onClick={() =>
+                      setRagConversionState((prev) => ({
+                        ...prev,
+                        isActive: false,
+                      }))
+                    }
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-1 min-h-0 overflow-hidden">
+            {shouldShowFolderTree && (
+              <div className="w-260 border-r border-glass p-16 overflow-y-auto flex-shrink-0 bg-surface">
+                <div className="flex items-center justify-between mb-12">
+                  <span className="text-12 font-semibold text-secondary uppercase tracking-wider">
+                    {t('FilesOnClouds_folders', 'Klasörler')}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-icon-xs text-secondary hover:text-primary"
+                    onClick={() => setIsCreateFolderOpen(true)}
+                    title={t('FilesOnClouds_addFolderTitle', 'Yeni Klasör')}
+                  >
+                    <FolderPlus size={15} />
+                  </button>
+                </div>
+                <CloudDirectoryView
+                  folders={folders}
+                  selectedFolder={selectedFolder}
+                  onSelectFolder={(folder) => {
+                    setSelectedFolder(folder);
+                    setSelectedFolderId(folder?.id || null);
+                  }}
+                  showAddFolderButton={true}
+                  onAddFolder={() => setIsCreateFolderOpen(true)}
+                />
+              </div>
+            )}
+
+            <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-16">
+              <DataTable
+                columns={columns}
+                data={filteredFiles}
+                loading={loading}
+                emptyMessage={
+                  effectiveAttachedOnly
+                    ? t('FilesOnClouds_noAttachedFiles', 'Bu belgeye iliştirilmiş bulut dosyası bulunmuyor.')
+                    : t('FilesOnClouds_noFiles', 'Bu klasörde henüz uygun dosya bulunmuyor.')
+                }
+                onRowClick={isSelectMode ? handleRowSelection : undefined}
               />
             </div>
-          )}
-
-          <div className="flex-1 flex flex-col min-h-0 overflow-y-auto p-16">
-            <DataTable
-              columns={columns}
-              data={filteredFiles}
-              loading={loading}
-              emptyMessage={
-                effectiveAttachedOnly
-                  ? t('FilesOnClouds_noAttachedFiles', 'Bu belgeye iliştirilmiş bulut dosyası bulunmuyor.')
-                  : t('FilesOnClouds_noFiles', 'Bu klasörde henüz uygun dosya bulunmuyor.')
-              }
-              onRowClick={isSelectMode ? handleRowSelection : undefined}
-            />
           </div>
-        </div>
+        )}
 
         {/* Modal: Buluta Dosya Yükle */}
         <UploadToCloud
