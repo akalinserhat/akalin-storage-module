@@ -26,6 +26,8 @@ import {
   Sparkles,
   AlertCircle,
   Check,
+  FolderTree,
+  FolderClosed,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -39,7 +41,7 @@ import {
   BaseButton,
 } from '@akalin/ui';
 import UploadToCloud from './UploadToCloud';
-import { useStorageModule } from '../adapters/StorageServiceContext';
+import { resolveDocumentTypeFromContext, useStorageModule } from '../adapters/StorageServiceContext';
 import { ProviderLogo } from '../logos/ProviderLogo';
 import { CloudFileItem, CloudFolderItem, FileSelectionMode, StorageIntegrationDTO } from '../types';
 import { validateFolderName, validateFileName } from '../validators/storageValidation';
@@ -159,6 +161,9 @@ export interface FilesOnCloudsProps {
   documentNo?: string;
   isModal?: boolean;
   showFolderTree?: boolean;
+  onToggleFolderTree?: (show: boolean) => void;
+  onSelectedFolderChange?: (folder: CloudFolderItem | null) => void;
+  showFolderToggleBar?: boolean;
   isSelectMode?: boolean;
   selectionMode?: FileSelectionMode;
   selectedFileIds?: number[];
@@ -181,6 +186,7 @@ export interface FilesOnCloudsHandle {
   convertPendingToRag?: () => void;
   openLocalFilePicker?: () => void;
   setIsAttachedOnly?: (val: boolean) => void;
+  toggleFolderTree?: () => void;
 }
 
 interface RagConversionState {
@@ -211,7 +217,10 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       documentType,
       documentNo,
       isModal = false,
-      showFolderTree = true,
+      showFolderTree = false,
+      onToggleFolderTree,
+      onSelectedFolderChange,
+      showFolderToggleBar = true,
       isSelectMode = false,
       selectionMode = 'single',
       selectedFileIds = [],
@@ -229,7 +238,16 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
     const { t } = useTranslation();
     const { adapter, onNotify } = useStorageModule();
 
-    const isAttachedMode = !!(documentId || documentGuid || documentType);
+    const effectiveDocType = useMemo(
+      () =>
+        resolveDocumentTypeFromContext(
+          documentType,
+          typeof window !== 'undefined' ? window.location.pathname : undefined
+        ),
+      [documentType]
+    );
+
+    const isAttachedMode = !!(documentId || documentGuid || effectiveDocType);
     const [files, setFiles] = useState<CloudFileItem[]>([]);
     const [folders, setFolders] = useState<CloudFolderItem[]>([]);
     const [loading, setLoading] = useState(false);
@@ -237,11 +255,25 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [integrations, setIntegrations] = useState<StorageIntegrationDTO[]>([]);
     const [internalAttachedOnly, setInternalAttachedOnly] = useState<boolean>(() =>
-      isAttachedOnly !== undefined ? isAttachedOnly : isAttachedMode
+      isAttachedOnly !== undefined ? isAttachedOnly : false
+    );
+    const [internalShowFolderTree, setInternalShowFolderTree] = useState<boolean>(() => Boolean(showFolderTree));
+
+    useEffect(() => {
+      setInternalShowFolderTree(Boolean(showFolderTree));
+    }, [showFolderTree]);
+
+    const handleToggleFolderTree = useCallback(
+      (nextVal?: boolean) => {
+        const target = nextVal !== undefined ? nextVal : !internalShowFolderTree;
+        setInternalShowFolderTree(target);
+        onToggleFolderTree?.(target);
+      },
+      [internalShowFolderTree, onToggleFolderTree]
     );
 
     const effectiveAttachedOnly = isAttachedOnly !== undefined ? isAttachedOnly : internalAttachedOnly;
-    const shouldShowFolderTree = showFolderTree && !effectiveAttachedOnly;
+    const shouldShowFolderTree = internalShowFolderTree && !effectiveAttachedOnly;
 
     const handleAttachedOnlyToggle = useCallback(
       (val: boolean) => {
@@ -256,8 +288,26 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
 
     const [selectedFolder, setSelectedFolder] = useState<CloudFolderItem | null>(null);
     const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+    const hasUserSelectedFolderRef = useRef<boolean>(false);
+    const prevDocContextKeyRef = useRef<string>(`${effectiveDocType || ''}_${documentNo || ''}`);
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
+
+    useEffect(() => {
+      const nextKey = `${effectiveDocType || ''}_${documentNo || ''}`;
+      if (prevDocContextKeyRef.current !== nextKey) {
+        prevDocContextKeyRef.current = nextKey;
+        hasUserSelectedFolderRef.current = false;
+        if (folders.length > 0 && (effectiveDocType || documentNo)) {
+          const matched = findDocumentFolder(folders, effectiveDocType, documentNo);
+          if (matched) {
+            setSelectedFolder(matched);
+            setSelectedFolderId(matched.id);
+            onSelectedFolderChange?.(matched);
+          }
+        }
+      }
+    }, [effectiveDocType, documentNo, folders, onSelectedFolderChange]);
 
     const [renamingFile, setRenamingFile] = useState<CloudFileItem | null>(null);
     const [newFileName, setNewFileName] = useState('');
@@ -323,39 +373,43 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
     const fetchFolders = useCallback(async () => {
       try {
         const params: any = {};
-        if (documentType) params.belgeTuru = documentType;
+        if (effectiveDocType) params.belgeTuru = effectiveDocType;
         if (documentId) params.belgeId = documentId;
         if (documentGuid) params.belgeGuid = documentGuid;
         if (documentNo) params.belgeNo = documentNo;
 
         const data = await adapter.getFolders(params);
-        setFolders(data || []);
+        const folderList = data || [];
+        setFolders(folderList);
 
-        if (documentType || documentNo) {
-          const matched = findDocumentFolder(data || [], documentType, documentNo);
-          if (matched && !selectedFolder) {
+        if ((effectiveDocType || documentNo) && !hasUserSelectedFolderRef.current) {
+          const matched = findDocumentFolder(folderList, effectiveDocType, documentNo);
+          if (matched) {
             setSelectedFolder(matched);
             setSelectedFolderId(matched.id);
+            onSelectedFolderChange?.(matched);
           }
         }
       } catch (err) {
         console.error('Klasörler yüklenirken hata:', err);
       }
-    }, [adapter, documentType, documentId, documentGuid, documentNo, selectedFolder]);
+    }, [adapter, effectiveDocType, documentId, documentGuid, documentNo, onSelectedFolderChange]);
 
     const fetchFiles = useCallback(async () => {
       try {
         setLoading(true);
         const params: any = {};
 
-        if (effectiveAttachedOnly) {
+        if (effectiveAttachedOnly && (documentId || documentGuid || effectiveDocType)) {
           if (documentGuid) params.belgeGuid = documentGuid;
           if (documentId) params.belgeId = documentId;
-          if (documentType) params.belgeTuru = documentType;
+          if (effectiveDocType) params.belgeTuru = effectiveDocType;
           if (documentNo) params.belgeNo = documentNo;
           params.isAttachedOnly = true;
         } else if (selectedFolderId) {
           params.klasorId = selectedFolderId;
+        } else if (!hasUserSelectedFolderRef.current && effectiveDocType) {
+          params.belgeTuru = effectiveDocType;
         }
 
         if (searchTerm) {
@@ -369,7 +423,17 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       } finally {
         setLoading(false);
       }
-    }, [adapter, effectiveAttachedOnly, selectedFolderId, searchTerm, documentGuid, documentId, documentType, documentNo, t]);
+    }, [
+      adapter,
+      effectiveAttachedOnly,
+      selectedFolderId,
+      searchTerm,
+      documentGuid,
+      documentId,
+      effectiveDocType,
+      documentNo,
+      t,
+    ]);
 
     useEffect(() => {
       fetchFolders();
@@ -705,6 +769,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       convertPendingToRag: handleConvertAllPendingToRag,
       openLocalFilePicker: () => localFileInputRef.current?.click(),
       setIsAttachedOnly: handleAttachedOnlyToggle,
+      toggleFolderTree: () => handleToggleFolderTree(),
     }));
 
     const columns = useMemo(
@@ -924,7 +989,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
 
         {!hideToolbarActions && (
           <div className="p-16 border-b border-glass flex items-center justify-between gap-12 flex-wrap bg-surface-variant">
-            <div className="flex items-center gap-8">
+            <div className="flex items-center gap-8 flex-wrap">
               <button
                 type="button"
                 className="btn btn-primary flex items-center gap-8 text-13"
@@ -933,6 +998,21 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
                 <Upload size={16} />
                 <span>{t('UploadToCloud_title', 'Buluta Dosya Yükle')}</span>
               </button>
+
+              {!effectiveAttachedOnly && (
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary flex items-center gap-8 text-13"
+                  onClick={() => handleToggleFolderTree()}
+                >
+                  {shouldShowFolderTree ? <FolderClosed size={16} /> : <FolderTree size={16} />}
+                  <span>
+                    {shouldShowFolderTree
+                      ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+                      : t('Klasorleri_Goster', 'Klasörleri Göster')}
+                  </span>
+                </button>
+              )}
 
               {shouldShowFolderTree && (
                 <button
@@ -956,7 +1036,25 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
               </button>
             </div>
 
-            <div className="flex items-center gap-16">
+            <div className="flex items-center gap-16 flex-wrap">
+              {!effectiveAttachedOnly && (
+                <div
+                  className="flex items-center gap-6 px-10 py-6 rounded-8 bg-surface border border-glass text-12 text-secondary cursor-pointer"
+                  onClick={() => handleToggleFolderTree()}
+                  title={t('FilesOnClouds_activeFolderTooltip', 'Seçili bulut klasörü (Değiştirmek için tıklayın)')}
+                >
+                  <FolderTree size={14} className="text-primary shrink-0" />
+                  <span>{t('FilesOnClouds_activeFolderLabel', 'Klasör')}:</span>
+                  <strong className="text-primary font-semibold">
+                    {selectedFolder
+                      ? t(selectedFolder.klasorAdi, selectedFolder.klasorAdi)
+                      : effectiveDocType
+                        ? t(effectiveDocType, effectiveDocType)
+                        : t('FilesOnClouds_rootDirectory', 'Kök Dizin')}
+                  </strong>
+                </div>
+              )}
+
               {isAttachedMode && (
                 <BaseSwitch
                   id="attachedFilesOnlySwitch"
@@ -970,6 +1068,41 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
                   }
                 />
               )}
+            </div>
+          </div>
+        )}
+
+        {hideToolbarActions && showFolderToggleBar && !effectiveAttachedOnly && !ragConversionState.isActive && (
+          <div className="px-16 py-10 border-b border-glass flex items-center justify-between gap-12 flex-wrap bg-surface-variant">
+            <div
+              className="flex items-center gap-8 text-13 text-secondary cursor-pointer"
+              onClick={() => handleToggleFolderTree()}
+              title={t('FilesOnClouds_activeFolderTooltip', 'Seçili bulut klasörü (Değiştirmek için tıklayın)')}
+            >
+              <FolderTree size={16} className="text-primary shrink-0" />
+              <span>{t('FilesOnClouds_activeFolderLabel', 'Klasör')}:</span>
+              <strong className="text-primary font-semibold">
+                {selectedFolder
+                  ? t(selectedFolder.klasorAdi, selectedFolder.klasorAdi)
+                  : effectiveDocType
+                    ? t(effectiveDocType, effectiveDocType)
+                    : t('FilesOnClouds_rootDirectory', 'Kök Dizin')}
+              </strong>
+            </div>
+
+            <div className="flex items-center gap-8">
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm flex items-center gap-6"
+                onClick={() => handleToggleFolderTree()}
+              >
+                {shouldShowFolderTree ? <FolderClosed size={15} /> : <FolderTree size={15} />}
+                <span>
+                  {shouldShowFolderTree
+                    ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+                    : t('Klasorleri_Goster', 'Klasörleri Göster')}
+                </span>
+              </button>
             </div>
           </div>
         )}
@@ -1167,21 +1300,33 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
                   <span className="text-12 font-semibold text-secondary uppercase tracking-wider">
                     {t('FilesOnClouds_folders', 'Klasörler')}
                   </span>
-                  <button
-                    type="button"
-                    className="btn-icon-xs text-secondary hover:text-primary"
-                    onClick={() => setIsCreateFolderOpen(true)}
-                    title={t('FilesOnClouds_addFolderTitle', 'Yeni Klasör')}
-                  >
-                    <FolderPlus size={15} />
-                  </button>
+                  <div className="flex items-center gap-6">
+                    <button
+                      type="button"
+                      className="btn-icon-xs text-secondary hover:text-primary"
+                      onClick={() => setIsCreateFolderOpen(true)}
+                      title={t('FilesOnClouds_addFolderTitle', 'Yeni Klasör')}
+                    >
+                      <FolderPlus size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-icon-xs text-secondary hover:text-primary"
+                      onClick={() => handleToggleFolderTree(false)}
+                      title={t('Klasorleri_Gizle', 'Klasörleri Gizle')}
+                    >
+                      <FolderClosed size={15} />
+                    </button>
+                  </div>
                 </div>
                 <CloudDirectoryView
                   folders={folders}
                   selectedFolder={selectedFolder}
                   onSelectFolder={(folder) => {
+                    hasUserSelectedFolderRef.current = true;
                     setSelectedFolder(folder);
                     setSelectedFolderId(folder?.id || null);
+                    onSelectedFolderChange?.(folder);
                   }}
                   showAddFolderButton={true}
                   onAddFolder={() => setIsCreateFolderOpen(true)}
@@ -1211,7 +1356,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
           onClose={() => setIsUploadModalOpen(false)}
           documentId={documentId}
           documentGuid={documentGuid}
-          documentType={documentType}
+          documentType={effectiveDocType}
           documentNo={documentNo}
           klasorId={selectedFolderId || undefined}
           onUploadSuccess={() => {

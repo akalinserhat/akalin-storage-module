@@ -5,15 +5,27 @@
  * BaseCardPage modal arabirimi olarak çift yönlü çalışır.
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Cloud, CloudOff, Settings, RefreshCw, Upload, FolderPlus, HardDrive, Paperclip, Sparkles } from 'lucide-react';
+import {
+  Cloud,
+  CloudOff,
+  Settings,
+  RefreshCw,
+  Upload,
+  FolderPlus,
+  HardDrive,
+  Paperclip,
+  Sparkles,
+  FolderTree,
+  FolderClosed,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BaseCardPage, ActionMenu, BaseSwitch } from '@akalin/ui';
 import FilesOnClouds, { FilesOnCloudsHandle } from '../components/FilesOnClouds';
-import { useStorageModule } from '../adapters/StorageServiceContext';
+import { resolveDocumentTypeFromContext, useStorageModule } from '../adapters/StorageServiceContext';
 import { CloudFileItem } from '../types';
 
 export interface BulutDosyalariPageProps {
@@ -39,7 +51,7 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
   documentType,
   documentNo,
   isModal,
-  showFolderTree = true,
+  showFolderTree = false,
   isSelectMode = false,
   onFileSelected,
   onSelectFile,
@@ -51,7 +63,10 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
 
   const activeDocId = documentId ?? (location.state as any)?.documentId;
   const activeDocGuid = documentGuid ?? (location.state as any)?.documentGuid;
-  const activeDocType = documentType ?? (location.state as any)?.documentType;
+  const activeDocType = useMemo(
+    () => resolveDocumentTypeFromContext(documentType, location.pathname, location.state),
+    [documentType, location.pathname, location.state]
+  );
   const activeDocNo = documentNo ?? (location.state as any)?.documentNo;
 
   const isModalMode = Boolean(isModal);
@@ -59,16 +74,15 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
   const [loadingIntegrations, setLoadingIntegrations] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isAttachedOnly, setIsAttachedOnly] = useState<boolean>(true);
+  const [isAttachedOnly, setIsAttachedOnly] = useState<boolean>(false);
+  const [showFolders, setShowFolders] = useState<boolean>(() => Boolean(showFolderTree));
   const filesOnCloudsRef = useRef<FilesOnCloudsHandle>(null);
 
   useEffect(() => {
-    if (activeDocId || activeDocGuid || activeDocType) {
-      setIsAttachedOnly(true);
-    }
-  }, [activeDocId, activeDocGuid, activeDocType]);
+    setShowFolders(Boolean(showFolderTree));
+  }, [showFolderTree]);
 
-  const shouldShowFolderTree = showFolderTree && !isAttachedOnly;
+  const shouldShowFolderTree = showFolders && !isAttachedOnly;
 
   const notify = (type: 'success' | 'error' | 'info' | 'warning', msg: string) => {
     if (onNotify) {
@@ -201,6 +215,19 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
           <ActionMenu
             actions={[
               {
+                label: shouldShowFolderTree
+                  ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+                  : t('Klasorleri_Goster', 'Klasörleri Göster'),
+                icon: shouldShowFolderTree ? <FolderClosed size={16} /> : <FolderTree size={16} />,
+                onClick: () => {
+                  const next = !shouldShowFolderTree;
+                  setShowFolders(next);
+                  if (next) {
+                    setIsAttachedOnly(false);
+                  }
+                },
+              },
+              {
                 label: t('UploadToCloud_title', 'Buluta Dosya Yükle'),
                 icon: <Upload size={16} />,
                 onClick: () => filesOnCloudsRef.current?.openUpload(),
@@ -238,23 +265,27 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
                   },
                 ]
                 : []),
-              {
-                custom: (
-                  <BaseSwitch
-                    id="actionMenuAttachedFilesSwitch"
-                    checked={isAttachedOnly}
-                    onChange={(e) => setIsAttachedOnly(e.target.checked)}
-                    label={
-                      <span className="flex items-center gap-8">
-                        <Paperclip size={15} className={isAttachedOnly ? 'text-primary' : 'text-secondary'} />
-                        <span>{t('FilesOnClouds_attachedFilesOnly', 'Bu Belgeye Ekli Dosyalar')}</span>
-                      </span>
-                    }
-                    className="action-menu-switch-item"
-                  />
-                ),
-                dividerAbove: true,
-              },
+              ...(activeDocId || activeDocGuid || activeDocType
+                ? [
+                  {
+                    custom: (
+                      <BaseSwitch
+                        id="actionMenuAttachedFilesSwitch"
+                        checked={isAttachedOnly}
+                        onChange={(e) => setIsAttachedOnly(e.target.checked)}
+                        label={
+                          <span className="flex items-center gap-8">
+                            <Paperclip size={15} className={isAttachedOnly ? 'text-primary' : 'text-secondary'} />
+                            <span>{t('FilesOnClouds_attachedFilesOnly', 'Bu Belgeye Ekli Dosyalar')}</span>
+                          </span>
+                        }
+                        className="action-menu-switch-item"
+                      />
+                    ),
+                    dividerAbove: true,
+                  },
+                ]
+                : []),
             ]}
           />
         ) : undefined
@@ -296,6 +327,11 @@ export const BulutDosyalariPage: React.FC<BulutDosyalariPageProps> = ({
             key={refreshKey}
             isModal={false}
             showFolderTree={shouldShowFolderTree}
+            onToggleFolderTree={(val) => {
+              setShowFolders(val);
+              if (val) setIsAttachedOnly(false);
+            }}
+            showFolderToggleBar={true}
             documentId={activeDocId}
             documentGuid={activeDocGuid}
             documentType={activeDocType}

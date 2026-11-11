@@ -22,6 +22,207 @@ import { DEFAULT_SAMPLE_INTEGRATIONS } from '../defaults/defaultProviders';
 
 export const DEFAULT_STORAGE_TOKEN_KEYS = ['token', 'admin_token'];
 
+const KNOWN_DOCUMENT_FOLDER_TYPES: Array<{ canonical: string; patterns: string[] }> = [
+  {
+    canonical: 'BshFiyatFarki',
+    patterns: [
+      'bshfiyatfarki',
+      'bsh-fiyat-farki',
+      'bsh_fiyat_farki',
+      'fiyatfarki',
+      'fiyat-farki',
+      'fiyat_farki',
+      'fiyat farkı',
+      'fiyat farki',
+    ],
+  },
+  {
+    canonical: 'KampanyaBelgesi',
+    patterns: ['kampanyabelgesi', 'kampanya-belgesi', 'kampanya_belgesi', '/kampanyalar', 'kampanya'],
+  },
+  {
+    canonical: 'FiyatListesi',
+    patterns: ['fiyatlistesi', 'fiyat-listesi', 'fiyat_listesi', '/fiyat-listeleri', 'fiyat listesi'],
+  },
+  {
+    canonical: 'AlinanSiparisIade',
+    patterns: ['alinansiparisiade', 'alinan-siparis-iade', '/siparisler/alinan-iade'],
+  },
+  {
+    canonical: 'VerilenSiparisIade',
+    patterns: ['verilensiparisiade', 'verilen-siparis-iade', '/siparisler/verilen-iade'],
+  },
+  {
+    canonical: 'AlinanSiparis',
+    patterns: ['alinansiparis', 'alinan-siparis', '/siparisler/alinan', 'sicak-satis', 'soguk-satis'],
+  },
+  {
+    canonical: 'VerilenSiparis',
+    patterns: ['verilensiparis', 'verilen-siparis', '/siparisler/verilen', 'satinalma-siparis'],
+  },
+  {
+    canonical: 'IrsaliyeliFatura',
+    patterns: ['irsaliyelifatura', 'irsaliyeli-fatura'],
+  },
+  {
+    canonical: 'Fatura',
+    patterns: ['/faturalar', 'fatura'],
+  },
+  {
+    canonical: 'Irsaliye',
+    patterns: ['/irsaliyeler', 'irsaliye'],
+  },
+  {
+    canonical: 'DepoGiris',
+    patterns: ['depogiris', 'depo-giris', '/depo/giris'],
+  },
+  {
+    canonical: 'DepoCikis',
+    patterns: ['depocikis', 'depo-cikis', '/depo/cikis'],
+  },
+  {
+    canonical: 'PaketVeSet',
+    patterns: ['paketveset', 'paket-ve-set', '/paket-ve-setler'],
+  },
+  {
+    canonical: 'PosKomisyonBelgesi',
+    patterns: ['poskomisyonbelgesi', 'pos-komisyon', '/pos-komisyon'],
+  },
+  {
+    canonical: 'Cari',
+    patterns: ['/cariler', 'carikart', 'cari-kart'],
+  },
+  {
+    canonical: 'Urun',
+    patterns: ['/urun-ve-hizmetler', '/urunler', 'urunkart', 'urun-kart'],
+  },
+];
+
+const IGNORED_GENERIC_DOC_TYPES = new Set([
+  'form',
+  'belge',
+  'kart',
+  'dosya-ice-aktar-karti',
+  'dosya-disa-aktar-karti',
+  'bulut-dosyalari-karti',
+  'excel-import',
+  'file-import',
+  'dosya-al',
+  'bulut-dosyalari',
+]);
+
+function matchCanonicalDocumentType(raw?: string | null): string | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  const lower = trimmed.toLowerCase();
+  if (IGNORED_GENERIC_DOC_TYPES.has(lower)) return undefined;
+
+  for (const item of KNOWN_DOCUMENT_FOLDER_TYPES) {
+    if (item.canonical.toLowerCase() === lower) {
+      return item.canonical;
+    }
+  }
+
+  for (const item of KNOWN_DOCUMENT_FOLDER_TYPES) {
+    if (item.patterns.some((p) => lower.includes(p))) {
+      return item.canonical;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Çağrıldığı belge, rota, location.state veya aktif AI görev akışı bağlamından
+ * ilgili bulut klasörü / belge türünü (örn. "BshFiyatFarki", "FiyatListesi", "KampanyaBelgesi") çözümler.
+ */
+export function resolveDocumentTypeFromContext(
+  explicitDocType?: string,
+  pathname?: string,
+  stateObj?: any
+): string | undefined {
+  // 1. Doğrudan verilen prop
+  if (explicitDocType && typeof explicitDocType === 'string' && explicitDocType.trim()) {
+    const matched = matchCanonicalDocumentType(explicitDocType);
+    if (matched) return matched;
+    if (!IGNORED_GENERIC_DOC_TYPES.has(explicitDocType.trim().toLowerCase())) {
+      return explicitDocType.trim();
+    }
+  }
+
+  // 2. location.state içerisindeki doğrudan alanlar ve rotalar
+  const stateCandidates: Array<string | undefined> = [
+    stateObj?.documentType,
+    stateObj?.belgeTuru,
+    stateObj?.varlikKodu,
+    stateObj?.entityCode,
+    pathname,
+    stateObj?.returnRoute,
+    stateObj?.fromRoute,
+    stateObj?.parentRoute,
+    stateObj?.initialAiData?.documentType,
+    stateObj?.initialAiData?.belgeTuru,
+    stateObj?.initialAiData?.returnRoute,
+    stateObj?.initialAiData?.waitingEntityPayload?.returnRoute,
+    stateObj?.initialAiData?.waitingEntityPayload?.sonrakiDugum?.varlikKodu,
+    stateObj?.initialAiData?.waitingEntityPayload?.sonrakiDugum?.VarlikKodu,
+    stateObj?.initialAiData?.waitingEntityPayload?.varlikKodu,
+    stateObj?.initialAiData?.waitingEntityPayload?.entityType,
+    stateObj?.initialAiData?.waitingEntityPayload?.workflowTitle,
+    stateObj?.initialAiData?.waitingEntityPayload?.workflowPrompt,
+    stateObj?.initialAiData?.waitingEntityPayload?.nodePrompt,
+    stateObj?.aiNode?.varlikKodu,
+    stateObj?.aiWorkflow?.baslik,
+    stateObj?.aiWorkflow?.prompt,
+  ];
+
+  for (const candidate of stateCandidates) {
+    const matched = matchCanonicalDocumentType(candidate);
+    if (matched) return matched;
+  }
+
+  // 3. sessionStorage üzerindeki aktif AI görev akışı (webakus_ai_waiting_entity)
+  if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+    try {
+      const waitingRaw = sessionStorage.getItem('webakus_ai_waiting_entity');
+      if (waitingRaw) {
+        const parsed = JSON.parse(waitingRaw);
+        const storageCandidates: Array<string | undefined> = [
+          parsed?.returnRoute,
+          parsed?.sonrakiDugum?.varlikKodu,
+          parsed?.sonrakiDugum?.VarlikKodu,
+          parsed?.varlikKodu,
+          parsed?.entityType,
+          parsed?.workflowTitle,
+          parsed?.workflowPrompt,
+          parsed?.nodePrompt,
+        ];
+        for (const candidate of storageCandidates) {
+          const matched = matchCanonicalDocumentType(candidate);
+          if (matched) return matched;
+        }
+      }
+    } catch {
+      // sessionStorage parse hatası yoksayılır
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeCloudFolderItem(f: any): CloudFolderItem {
+  const rawChildren = f?.altKlasorler ?? f?.AltKlasorler;
+  return {
+    ...f,
+    id: Number(f?.id ?? f?.Id ?? 0),
+    klasorAdi: String(f?.klasorAdi ?? f?.KlasorAdi ?? f?.ad ?? ''),
+    klasorTuru: f?.klasorTuru ?? f?.KlasorTuru,
+    ustKlasorId: f?.ustKlasorId ?? f?.UstKlasorId ?? null,
+    altKlasorler: Array.isArray(rawChildren) ? rawChildren.map(normalizeCloudFolderItem) : [],
+  };
+}
+
 /**
  * Aktif oturuma ait JWT erişim anahtarını (Bearer token) localStorage / sessionStorage üzerinden çözümler.
  */
@@ -162,7 +363,9 @@ export function createRestStorageAdapter(options?: {
       const res = await doFetch(`${apiPrefix}/Klasorler${qs ? `?${qs}` : ''}`, {
         headers: getHeaders(),
       });
-      return await handleJson(res);
+      const raw = await handleJson(res);
+      if (!Array.isArray(raw)) return [];
+      return raw.map(normalizeCloudFolderItem);
     },
 
     async createFolder(data: CreateFolderParams): Promise<CloudFolderItem> {

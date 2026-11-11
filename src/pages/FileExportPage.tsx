@@ -22,6 +22,7 @@ import {
   ExternalLink,
   Layers,
   FolderTree,
+  FolderClosed,
   RefreshCw,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -37,7 +38,7 @@ import {
   type ActionMenuItem,
   type DropdownOption,
 } from '@akalin/ui';
-import { useStorageModule } from '../adapters/StorageServiceContext';
+import { resolveDocumentTypeFromContext, useStorageModule } from '../adapters/StorageServiceContext';
 import { ProviderLogo } from '../logos/ProviderLogo';
 import {
   findDocumentFolder,
@@ -199,7 +200,10 @@ export const FileExportPage: React.FC<FileExportPageProps> = ({
   const isEffectivelyOpen = Boolean(isOpen) || isExportRoute;
   const isModalMode = Boolean(isModal) && !asPage;
 
-  const effectiveDocumentType = documentType || (location.state as any)?.documentType;
+  const effectiveDocumentType = useMemo(
+    () => resolveDocumentTypeFromContext(documentType, location.pathname, location.state),
+    [documentType, location.pathname, location.state]
+  );
   const effectiveDocumentNo = documentNo || (location.state as any)?.documentNo;
   const effectiveDocumentId = documentId || (location.state as any)?.documentId;
   const effectiveDocumentGuid = documentGuid || (location.state as any)?.documentGuid;
@@ -250,6 +254,7 @@ export const FileExportPage: React.FC<FileExportPageProps> = ({
   const [folders, setFolders] = useState<CloudFolderItem[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<CloudFolderItem | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [showFolderTree, setShowFolderTree] = useState<boolean>(false);
   const [loadingCloud, setLoadingCloud] = useState<boolean>(false);
 
   // Yeni klasör oluşturma
@@ -871,47 +876,73 @@ export const FileExportPage: React.FC<FileExportPageProps> = ({
 
               {/* Klasör Ağacı */}
               <div className="border border-glass rounded-12 p-16 bg-surface flex flex-col gap-12">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-8">
+                <div className="flex items-center justify-between flex-wrap gap-8">
+                  <div
+                    className="flex items-center gap-8 cursor-pointer"
+                    onClick={() => setShowFolderTree((prev) => !prev)}
+                  >
                     <FolderTree size={16} className="text-primary" />
                     <span className="text-13 font-bold text-primary">
                       {t('FileExport_selectTargetFolder', 'Hedef Bulut Klasörü Seçin')}
                     </span>
-                    {selectedFolder && (
-                      <span className="text-12 text-secondary">
-                        ({t('FileExport_selectedFolder', 'Seçili')}: <strong>{selectedFolder.klasorAdi}</strong>)
+                    <span className="text-12 text-secondary">
+                      ({t('FileExport_selectedFolder', 'Seçili')}:{' '}
+                      <strong>
+                        {selectedFolder
+                          ? t(selectedFolder.klasorAdi, selectedFolder.klasorAdi)
+                          : effectiveDocumentType
+                            ? t(effectiveDocumentType, effectiveDocumentType)
+                            : t('FilesOnClouds_rootDirectory', 'Kök Dizin')}
+                      </strong>
+                      )
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-8">
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm flex items-center gap-6 text-12"
+                      onClick={() => setShowFolderTree((prev) => !prev)}
+                    >
+                      {showFolderTree ? <FolderClosed size={14} /> : <FolderTree size={14} />}
+                      <span>
+                        {showFolderTree
+                          ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+                          : t('Klasorleri_Goster', 'Klasörleri Göster')}
                       </span>
+                    </button>
+                    {showFolderTree && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm flex items-center gap-6 text-12"
+                        onClick={() => setIsCreateFolderOpen(true)}
+                      >
+                        <FolderPlus size={14} />
+                        <span>{t('FilesOnClouds_addFolderTitle', 'Yeni Klasör')}</span>
+                      </button>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm flex items-center gap-6 text-12"
-                    onClick={() => setIsCreateFolderOpen(true)}
-                  >
-                    <FolderPlus size={14} />
-                    <span>{t('FilesOnClouds_addFolderTitle', 'Yeni Klasör')}</span>
-                  </button>
                 </div>
 
-                {loadingCloud ? (
-                  <div className="p-24 flex items-center justify-center text-secondary text-13">
-                    <RefreshCw size={18} className="animate-spin mr-8" />
-                    <span>{t('Yukleniyor', 'Yükleniyor...')}</span>
-                  </div>
-                ) : (
-                  <div className="max-h-260 overflow-y-auto">
-                    <CloudDirectoryView
-                      folders={folders}
-                      selectedFolder={selectedFolder}
-                      onSelectFolder={(folder) => {
-                        setSelectedFolder(folder);
-                        setSelectedFolderId(folder?.id || null);
-                      }}
-                      showAddFolderButton={true}
-                      onAddFolder={() => setIsCreateFolderOpen(true)}
-                    />
-                  </div>
-                )}
+                {showFolderTree &&
+                  (loadingCloud ? (
+                    <div className="p-24 flex items-center justify-center text-secondary text-13">
+                      <RefreshCw size={18} className="animate-spin mr-8" />
+                      <span>{t('Yukleniyor', 'Yükleniyor...')}</span>
+                    </div>
+                  ) : (
+                    <div className="max-h-260 overflow-y-auto">
+                      <CloudDirectoryView
+                        folders={folders}
+                        selectedFolder={selectedFolder}
+                        onSelectFolder={(folder) => {
+                          setSelectedFolder(folder);
+                          setSelectedFolderId(folder?.id || null);
+                        }}
+                        showAddFolderButton={true}
+                        onAddFolder={() => setIsCreateFolderOpen(true)}
+                      />
+                    </div>
+                  ))}
               </div>
             </div>
           )}

@@ -56,9 +56,10 @@ import FilesOnClouds, {
   getFileExtension,
   renderFileTypeIcon,
 } from '../components/FilesOnClouds';
-import { useStorageModule } from '../adapters/StorageServiceContext';
+import { resolveDocumentTypeFromContext, useStorageModule } from '../adapters/StorageServiceContext';
 import {
   CloudFileItem,
+  CloudFolderItem,
   ExcelColumnDef,
   ExcelSheet,
   FileFilterCategory,
@@ -579,7 +580,10 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   const isEffectivelyOpen = Boolean(isOpen) || isImportRoute;
   const isModalMode = Boolean(isModal) && !asPage;
 
-  const effectiveDocumentType = documentType || (location.state as any)?.documentType;
+  const effectiveDocumentType = useMemo(
+    () => resolveDocumentTypeFromContext(documentType, location.pathname, location.state),
+    [documentType, location.pathname, location.state]
+  );
   const effectiveDocumentNo = documentNo || (location.state as any)?.documentNo;
   const effectiveDocumentId = documentId || (location.state as any)?.documentId;
   const effectiveDocumentGuid = documentGuid || (location.state as any)?.documentGuid;
@@ -589,7 +593,8 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   const [sheets, setSheets] = useState<ExcelSheet[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [fileSourceTab, setFileSourceTab] = useState<'local' | 'cloud' | 'mapping'>('local');
-  const [cloudShowFolders, setCloudShowFolders] = useState<boolean>(true);
+  const [cloudShowFolders, setCloudShowFolders] = useState<boolean>(false);
+  const [selectedCloudFolder, setSelectedCloudFolder] = useState<CloudFolderItem | null>(null);
 
   // İşlem durumları
   const [isAiMatching, setIsAiMatching] = useState(false);
@@ -1634,23 +1639,41 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
       <div className="flex items-center gap-10 flex-wrap">
         {fileSourceTab === 'cloud' && (
-          <button
-            type="button"
-            className="btn btn-outline-secondary btn-sm flex items-center gap-6"
-            onClick={() => setCloudShowFolders((prev) => !prev)}
-            title={
-              cloudShowFolders
-                ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
-                : t('Klasorleri_Goster', 'Klasörleri Göster')
-            }
-          >
-            {cloudShowFolders ? <FolderClosed size={15} /> : <FolderTree size={15} />}
-            <span>
-              {cloudShowFolders
-                ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
-                : t('Klasorleri_Goster', 'Klasörleri Göster')}
-            </span>
-          </button>
+          <div className="flex items-center gap-8 flex-wrap">
+            <div
+              className="flex items-center gap-6 px-10 py-6 rounded-8 bg-surface-variant border border-glass text-12 text-secondary cursor-pointer"
+              onClick={() => setCloudShowFolders((prev) => !prev)}
+              title={t('FilesOnClouds_activeFolderTooltip', 'Seçili bulut klasörü (Değiştirmek için tıklayın)')}
+            >
+              <FolderTree size={14} className="text-primary shrink-0" />
+              <span>{t('FilesOnClouds_activeFolderLabel', 'Klasör')}:</span>
+              <strong className="text-primary font-semibold">
+                {selectedCloudFolder
+                  ? t(selectedCloudFolder.klasorAdi, selectedCloudFolder.klasorAdi)
+                  : effectiveDocumentType
+                    ? t(effectiveDocumentType, effectiveDocumentType)
+                    : t('FilesOnClouds_rootDirectory', 'Kök Dizin')}
+              </strong>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm flex items-center gap-6"
+              onClick={() => setCloudShowFolders((prev) => !prev)}
+              title={
+                cloudShowFolders
+                  ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+                  : t('Klasorleri_Goster', 'Klasörleri Göster')
+              }
+            >
+              {cloudShowFolders ? <FolderClosed size={15} /> : <FolderTree size={15} />}
+              <span>
+                {cloudShowFolders
+                  ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+                  : t('Klasorleri_Goster', 'Klasörleri Göster')}
+              </span>
+            </button>
+          </div>
         )}
 
         {effectiveAllowFilterChange && !isExcelMappingMode && (
@@ -1735,8 +1758,10 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
           isOpen={true}
           isModal={false}
           showFolderTree={cloudShowFolders}
+          onToggleFolderTree={setCloudShowFolders}
+          onSelectedFolderChange={setSelectedCloudFolder}
+          showFolderToggleBar={false}
           isAttachedOnly={false}
-          onAttachedOnlyChange={(val) => setCloudShowFolders(!val)}
           isSelectMode={true}
           selectionMode={effectiveSelectionMode}
           selectedFileIds={selectedCloudFileIds}
