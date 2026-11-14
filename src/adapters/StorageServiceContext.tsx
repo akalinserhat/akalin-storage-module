@@ -223,6 +223,54 @@ function normalizeCloudFolderItem(f: any): CloudFolderItem {
   };
 }
 
+function normalizeCloudFileItem(f: any): CloudFileItem {
+  return {
+    ...f,
+    id: Number(f?.id ?? f?.Id ?? 0),
+    dosyaAdi: String(f?.dosyaAdi ?? f?.DosyaAdi ?? f?.name ?? ''),
+    boyut: Number(f?.boyut ?? f?.dosyaBoyutu ?? f?.DosyaBoyutu ?? f?.size ?? 0),
+    contentType: f?.contentType ?? f?.dosyaTipi ?? f?.DosyaTipi,
+    dosyaUrl: f?.dosyaUrl ?? f?.bulutDosyaUrl ?? f?.BulutDosyaUrl,
+    contentHash:
+      typeof (f?.contentHash ?? f?.ContentHash) === 'string' &&
+      String(f?.contentHash ?? f?.ContentHash).trim()
+        ? String(f?.contentHash ?? f?.ContentHash).trim().toLowerCase()
+        : undefined,
+    yuklemeTarihi: f?.yuklemeTarihi ?? f?.olusturulmaTarihi ?? f?.OlusturulmaTarihi,
+    provider: f?.provider ?? f?.Provider,
+    klasorId: f?.klasorId ?? f?.bulutKlasorId ?? f?.BulutKlasorId ?? null,
+    belgeTuru: f?.belgeTuru ?? f?.BelgeTuru,
+    belgeId: f?.belgeId ?? f?.BelgeId,
+    belgeGuid: f?.belgeGuid ?? f?.BelgeGuid,
+    belgeNo: f?.belgeNo ?? f?.BelgeNo,
+    ragDestekleniyorMu:
+      f?.ragDestekleniyorMu !== undefined ? Boolean(f.ragDestekleniyorMu) : undefined,
+    ragAktarildiMi: Boolean(f?.ragAktarildiMi),
+    ragParcaSayisi: Number(f?.ragParcaSayisi ?? 0),
+    ragSayfaSayisi: Number(f?.ragSayfaSayisi ?? 0),
+    ragTokenSayisi: Number(f?.ragTokenSayisi ?? 0),
+    ragGuncellenmeTarihi: f?.ragGuncellenmeTarihi,
+    ragDocId: f?.ragDocId,
+  };
+}
+
+/**
+ * Verilen ArrayBuffer içeriğinin SHA-256 özetini (küçük harf hex) hesaplar.
+ * Bulutta aynı içerikli dosyanın mükerrer yüklenmesini önlemek için kullanılır.
+ */
+export async function computeSha256Hex(buffer: ArrayBuffer): Promise<string> {
+  try {
+    const subtle =
+      typeof globalThis !== 'undefined' && globalThis.crypto ? globalThis.crypto.subtle : undefined;
+    if (!subtle) return '';
+    const hashBuffer = await subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Aktif oturuma ait JWT erişim anahtarını (Bearer token) localStorage / sessionStorage üzerinden çözümler.
  */
@@ -394,31 +442,14 @@ export function createRestStorageAdapter(options?: {
       });
       const raw = await handleJson(res);
       if (!Array.isArray(raw)) return [];
-      return raw.map((f: any) => ({
-        ...f,
-        id: f.id,
-        dosyaAdi: f.dosyaAdi,
-        boyut: Number(f.boyut ?? f.dosyaBoyutu ?? 0),
-        contentType: f.contentType ?? f.dosyaTipi,
-        dosyaUrl: f.dosyaUrl ?? f.bulutDosyaUrl,
-        yuklemeTarihi: f.yuklemeTarihi ?? f.olusturulmaTarihi,
-        provider: f.provider,
-        klasorId: f.klasorId ?? f.bulutKlasorId ?? null,
-        ragDestekleniyorMu: f.ragDestekleniyorMu !== undefined ? Boolean(f.ragDestekleniyorMu) : undefined,
-        ragAktarildiMi: Boolean(f.ragAktarildiMi),
-        ragParcaSayisi: Number(f.ragParcaSayisi ?? 0),
-        ragSayfaSayisi: Number(f.ragSayfaSayisi ?? 0),
-        ragTokenSayisi: Number(f.ragTokenSayisi ?? 0),
-        ragGuncellenmeTarihi: f.ragGuncellenmeTarihi,
-        ragDocId: f.ragDocId,
-      }));
+      return raw.map(normalizeCloudFileItem);
     },
 
     async uploadFile(
       data: UploadFileParams,
       onProgress?: (percent: number, loaded: number, total: number) => void,
       signal?: AbortSignal
-    ): Promise<{ dosya: CloudFileItem; mesaj?: string }> {
+    ): Promise<{ dosya: CloudFileItem; mesaj?: string; zatenBuluttaVarMi?: boolean }> {
       const formData = new FormData();
       formData.append('dosya', data.dosya);
       formData.append('provider', data.provider);
@@ -427,6 +458,14 @@ export function createRestStorageAdapter(options?: {
       if (data.belgeId) formData.append('belgeId', String(data.belgeId));
       if (data.belgeGuid) formData.append('belgeGuid', data.belgeGuid);
       if (data.belgeNo) formData.append('belgeNo', data.belgeNo);
+      if (data.contentHash) formData.append('contentHash', data.contentHash);
+
+      const normalizeUploadResponse = (parsed: any) => ({
+        ...parsed,
+        dosya: parsed?.dosya ? normalizeCloudFileItem(parsed.dosya) : ({} as CloudFileItem),
+        mesaj: parsed?.mesaj,
+        zatenBuluttaVarMi: Boolean(parsed?.zatenBuluttaVarMi),
+      });
 
       // Tarayıcı ortamında XMLHttpRequest kullanarak anlık yükleme ilerlemesini (upload progress) takip edelim
       if (typeof XMLHttpRequest !== 'undefined') {
@@ -463,7 +502,7 @@ export function createRestStorageAdapter(options?: {
             if (xhr.status >= 200 && xhr.status < 300) {
               try {
                 const parsed = JSON.parse(xhr.responseText);
-                resolve(parsed);
+                resolve(normalizeUploadResponse(parsed));
               } catch {
                 resolve({ dosya: {} as any, mesaj: 'Yüklendi' });
               }
@@ -489,7 +528,8 @@ export function createRestStorageAdapter(options?: {
         body: formData,
         signal,
       });
-      return await handleJson(res);
+      const parsed = await handleJson(res);
+      return normalizeUploadResponse(parsed);
     },
 
     async downloadFile(id: number): Promise<ArrayBuffer> {
@@ -637,6 +677,39 @@ export function createLocalStorageStorageAdapter(options?: {
       });
     },
     async uploadFile(data: UploadFileParams, onProgress?: (p: number, l: number, t: number) => void) {
+      let hash = data.contentHash || '';
+      if (!hash && typeof data.dosya?.arrayBuffer === 'function') {
+        try {
+          hash = await computeSha256Hex(await data.dosya.arrayBuffer());
+        } catch {
+          hash = '';
+        }
+      }
+
+      const existing = files.find((f) => {
+        if (hash && f.contentHash) {
+          return f.contentHash.toLowerCase() === hash.toLowerCase();
+        }
+        if (!f.contentHash) {
+          return (
+            f.dosyaAdi.trim().toLowerCase() === data.dosya.name.trim().toLowerCase() &&
+            Number(f.boyut) === Number(data.dosya.size)
+          );
+        }
+        return false;
+      });
+
+      if (existing) {
+        if (onProgress) {
+          onProgress(100, data.dosya.size, data.dosya.size);
+        }
+        return {
+          dosya: existing,
+          zatenBuluttaVarMi: true,
+          mesaj: 'Dosya halihazırda bulutta yüklü.',
+        };
+      }
+
       if (onProgress) {
         onProgress(50, data.dosya.size / 2, data.dosya.size);
         setTimeout(() => onProgress(100, data.dosya.size, data.dosya.size), 100);
@@ -646,6 +719,7 @@ export function createLocalStorageStorageAdapter(options?: {
         dosyaAdi: data.dosya.name,
         boyut: data.dosya.size,
         contentType: data.dosya.type,
+        contentHash: hash || undefined,
         provider: data.provider,
         klasorId: data.klasorId || null,
         belgeTuru: data.belgeTuru,

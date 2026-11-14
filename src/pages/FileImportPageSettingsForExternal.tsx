@@ -30,6 +30,10 @@ export interface FileImportExternalSettingsValue {
   selectionMode?: FileSelectionMode;
   allowFilterChange?: boolean;
   defaultSendToCloud?: boolean;
+  /** Buluta Yükle seçeneğini zorunlu kılar (açık gelir ve kullanıcı kapatamaz) */
+  requireUploadToCloud?: boolean;
+  /** requireUploadToCloud için alternatif alan adı */
+  forceSendToCloud?: boolean;
 }
 
 export interface FileImportPageSettingsForExternalProps {
@@ -57,6 +61,8 @@ const buildExternalSettingsState = (
           ? [val.fileTypeFilter]
           : ['all'];
 
+  const requireCloud = Boolean(val?.requireUploadToCloud ?? val?.forceSendToCloud);
+
   return {
     fileTypeFilters: initialFilters,
     fileTypeFilter:
@@ -64,7 +70,8 @@ const buildExternalSettingsState = (
     allowedExtensions: resolveFileFilterExtensions(initialFilters),
     selectionMode: val?.selectionMode || 'single',
     allowFilterChange: val?.allowFilterChange !== false,
-    defaultSendToCloud: Boolean(val?.defaultSendToCloud),
+    defaultSendToCloud: requireCloud ? true : Boolean(val?.defaultSendToCloud),
+    requireUploadToCloud: requireCloud,
   };
 };
 
@@ -250,10 +257,43 @@ export const FileImportPageSettingsForExternal: React.FC<FileImportPageSettingsF
             </div>
             <BaseSwitch
               id="fileImportExtSendToCloudSwitch"
-              checked={Boolean(formState.defaultSendToCloud)}
+              checked={Boolean(formState.requireUploadToCloud || formState.defaultSendToCloud)}
+              disabled={Boolean(formState.requireUploadToCloud)}
               onChange={(e: any) => {
                 const checked = typeof e === 'boolean' ? e : e?.target?.checked;
                 handleFieldUpdate({ defaultSendToCloud: Boolean(checked) });
+              }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-14 rounded-10 bg-surface-variant border border-glass">
+            <div className="flex flex-col gap-2">
+              <span className="font-semibold text-13 text-primary flex items-center gap-6">
+                <Cloud size={14} />
+                <span>
+                  {t(
+                    'FileImport_requireUploadToCloudLabel',
+                    'Buluta Yükle Seçeneğini Zorunlu Kıl'
+                  )}
+                </span>
+              </span>
+              <span className="text-12 text-secondary">
+                {t(
+                  'FileImport_requireUploadToCloudDesc',
+                  'Aktif edildiğinde Buluta Yükle seçeneği açık ve kilitli gelir; kullanıcı bu seçeneği kapatamaz.'
+                )}
+              </span>
+            </div>
+            <BaseSwitch
+              id="fileImportExtRequireUploadToCloudSwitch"
+              checked={Boolean(formState.requireUploadToCloud)}
+              onChange={(e: any) => {
+                const checked = Boolean(typeof e === 'boolean' ? e : e?.target?.checked);
+                handleFieldUpdate({
+                  requireUploadToCloud: checked,
+                  forceSendToCloud: checked,
+                  ...(checked ? { defaultSendToCloud: true } : {}),
+                });
               }}
             />
           </div>

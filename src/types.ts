@@ -29,6 +29,7 @@ export interface CloudFileItem {
   boyut: number;
   contentType?: string;
   dosyaUrl?: string;
+  contentHash?: string;
   yuklemeTarihi?: string;
   provider?: string;
   klasorId?: number | null;
@@ -108,6 +109,7 @@ export interface UploadFileParams {
   belgeId?: number;
   belgeGuid?: string;
   belgeNo?: string;
+  contentHash?: string;
 }
 
 export interface RenameFileParams {
@@ -146,9 +148,11 @@ export interface ImportedFileItem {
   size: number;
   extension: string;
   mimeType?: string;
+  contentHash?: string;
   source: 'local' | 'cloud';
   localFile?: File;
   cloudFile?: CloudFileItem;
+  reusedFromCloud?: boolean;
   arrayBuffer?: ArrayBuffer;
 }
 
@@ -200,7 +204,7 @@ export interface IStorageServiceAdapter {
     data: UploadFileParams,
     onProgress?: (percent: number, loaded: number, total: number) => void,
     signal?: AbortSignal
-  ): Promise<{ dosya: CloudFileItem; mesaj?: string }>;
+  ): Promise<{ dosya: CloudFileItem; mesaj?: string; zatenBuluttaVarMi?: boolean }>;
   downloadFile?(id: number): Promise<ArrayBuffer>;
   renameFile(id: number, yeniAd: string): Promise<CloudFileItem>;
   deleteFile(id: number): Promise<void>;

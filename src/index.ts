@@ -11,6 +11,7 @@ export {
   createLocalStorageStorageAdapter,
   createRestFileManagerAdapter,
   createLocalStorageFileManagerAdapter,
+  computeSha256Hex,
   StorageModuleContext,
   StorageModuleProvider,
   FileManagerModuleProvider,

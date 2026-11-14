@@ -18,6 +18,7 @@ import {
   Cloud,
   Sparkles,
   AlertCircle,
+  AlertTriangle,
   FolderUp,
   RefreshCw,
   CheckCircle2,
@@ -36,6 +37,7 @@ import * as XLSX from 'xlsx';
 import axios from 'axios';
 import {
   BaseCardPage,
+  BaseButton,
   BaseDropdownSecici,
   BaseSwitch,
   TabLayout,
@@ -56,7 +58,11 @@ import FilesOnClouds, {
   getFileExtension,
   renderFileTypeIcon,
 } from '../components/FilesOnClouds';
-import { resolveDocumentTypeFromContext, useStorageModule } from '../adapters/StorageServiceContext';
+import {
+  computeSha256Hex,
+  resolveDocumentTypeFromContext,
+  useStorageModule,
+} from '../adapters/StorageServiceContext';
 import {
   CloudFileItem,
   CloudFolderItem,
@@ -142,7 +148,23 @@ export interface FileImportPageProps {
   documentNo?: string;
   isModal?: boolean;
   asPage?: boolean;
+  /**
+   * Yerel dosyalar içeri aktarılırken "Buluta Yükle" seçeneğinin varsayılan açık/kapalı durumu
+   */
   defaultSendToCloud?: boolean;
+  /**
+   * defaultSendToCloud için alternatif prop adı ("Buluta Yükle" varsayılan açık/kapalı durumu)
+   */
+  defaultUploadToCloud?: boolean;
+  /**
+   * Bu sayfayı çağıran sayfanın "Buluta Yükle" seçeneğini zorunlu kılmasını sağlar.
+   * true verildiğinde "Buluta Yükle" seçeneği açık (checked) gelir ve kullanıcı tarafından kapatılamaz (disabled).
+   */
+  requireUploadToCloud?: boolean;
+  /**
+   * requireUploadToCloud için alternatif prop adı
+   */
+  forceSendToCloud?: boolean;
   /** Sayfanın düğüm/harici bileşen tarafından çağrılabilecek [sayfaİsmi]SettingsForExternal.tsx ayar sayfası var mı? */
   hasExternalSettings?: boolean;
   /** Harici ayar bileşeni referansı */
@@ -451,6 +473,9 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   isModal = true,
   asPage = false,
   defaultSendToCloud = true,
+  defaultUploadToCloud,
+  requireUploadToCloud = false,
+  forceSendToCloud = false,
   hasExternalSettings = true,
   externalSettingsComponent = FileImportPageSettingsForExternal,
 }) => {
@@ -601,18 +626,48 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   const [isImporting, setIsImporting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Bulut'a gönderme seçeneği
-  const [sendToCloud, setSendToCloud] = useState<boolean>(
-    externalNodeSettings.defaultSendToCloud !== undefined
-      ? Boolean(externalNodeSettings.defaultSendToCloud)
-      : defaultSendToCloud
+  // Bulut'a yükleme zorunluluğu ve varsayılan durumu (Prop, location.state ve harici düğüm ayarlarından çözümlenir)
+  const locationStateObj = (location.state as any) || {};
+  const effectiveRequireUploadToCloud = Boolean(
+    requireUploadToCloud ||
+    forceSendToCloud ||
+    locationStateObj.requireUploadToCloud ||
+    locationStateObj.forceSendToCloud ||
+    externalNodeSettings.requireUploadToCloud ||
+    externalNodeSettings.forceSendToCloud
   );
 
-  useEffect(() => {
+  const resolvedDefaultUploadToCloud = useMemo<boolean>(() => {
+    if (effectiveRequireUploadToCloud) return true;
     if (externalNodeSettings.defaultSendToCloud !== undefined) {
-      setSendToCloud(Boolean(externalNodeSettings.defaultSendToCloud));
+      return Boolean(externalNodeSettings.defaultSendToCloud);
     }
-  }, [externalNodeSettings.defaultSendToCloud]);
+    if (locationStateObj.defaultUploadToCloud !== undefined) {
+      return Boolean(locationStateObj.defaultUploadToCloud);
+    }
+    if (locationStateObj.defaultSendToCloud !== undefined) {
+      return Boolean(locationStateObj.defaultSendToCloud);
+    }
+    if (defaultUploadToCloud !== undefined) {
+      return Boolean(defaultUploadToCloud);
+    }
+    return Boolean(defaultSendToCloud);
+  }, [
+    effectiveRequireUploadToCloud,
+    externalNodeSettings.defaultSendToCloud,
+    locationStateObj.defaultUploadToCloud,
+    locationStateObj.defaultSendToCloud,
+    defaultUploadToCloud,
+    defaultSendToCloud,
+  ]);
+
+  const [sendToCloud, setSendToCloud] = useState<boolean>(resolvedDefaultUploadToCloud);
+
+  useEffect(() => {
+    setSendToCloud(resolvedDefaultUploadToCloud);
+  }, [resolvedDefaultUploadToCloud]);
+
+  const effectiveSendToCloud = effectiveRequireUploadToCloud ? true : sendToCloud;
 
   const localFileInputRef = useRef<HTMLInputElement>(null);
   const filesOnCloudsRef = useRef<FilesOnCloudsHandle>(null);
@@ -774,6 +829,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
         const ext = getFileExtension(rawFile.name);
         const arrayBuffer = await rawFile.arrayBuffer();
+        const contentHash = await computeSha256Hex(arrayBuffer);
 
         if (isExcelMappingMode) {
           try {
@@ -799,6 +855,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
           size: rawFile.size,
           extension: ext,
           mimeType: rawFile.type,
+          contentHash: contentHash || undefined,
           source: 'local',
           localFile: rawFile,
           arrayBuffer,
@@ -1131,34 +1188,184 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     }
   };
 
-  // Seçili yerel dosyaları bulut depolamaya yükleme yardımcısı
+  // Seçili yerel dosyaları bulut depolamaya yükleme (ve bulutta zaten varsa mükerrer yüklemeyi önleyip mevcut dosyayı kullanma) yardımcısı
   const uploadLocalFilesToCloudIfEnabled = async (): Promise<CloudFileItem[]> => {
     const uploadedCloudFiles: CloudFileItem[] = [];
-    if (!isBulutActive || !sendToCloud) return uploadedCloudFiles;
+    if (!isBulutActive || !effectiveSendToCloud) return uploadedCloudFiles;
     const localItems = selectedFiles.filter((f) => f.source === 'local' && f.localFile);
     if (localItems.length === 0) return uploadedCloudFiles;
 
+    const findMatchingCloudFile = (
+      item: ImportedFileItem,
+      cloudList: CloudFileItem[]
+    ): CloudFileItem | undefined => {
+      if (!cloudList || cloudList.length === 0) return undefined;
+      const itemHash = item.contentHash?.trim().toLowerCase();
+      const itemNameLower = item.name.trim().toLowerCase();
+
+      const pickPreferred = (candidates: CloudFileItem[]): CloudFileItem | undefined => {
+        if (candidates.length === 0) return undefined;
+        if (effectiveDocumentType) {
+          const sameDocType = candidates.find(
+            (c) => c.belgeTuru && c.belgeTuru.toLowerCase() === effectiveDocumentType.toLowerCase()
+          );
+          if (sameDocType) return sameDocType;
+        }
+        return candidates[0];
+      };
+
+      if (itemHash) {
+        const hashMatches = cloudList.filter(
+          (c) => c.contentHash && c.contentHash.trim().toLowerCase() === itemHash
+        );
+        if (hashMatches.length > 0) {
+          return pickPreferred(hashMatches);
+        }
+
+        // Eski kayıtlarda contentHash henüz hesaplanmamışsa (null/boş), yalnızca aynı isim + aynı boyut olanları eşleştir.
+        // Eğer buluttaki kaydın contentHash değeri doluysa ve eşleşmediyse içerik değişmiş demektir, kesinlikle eşleştirilmez.
+        const legacyMatches = cloudList.filter(
+          (c) =>
+            !c.contentHash &&
+            c.dosyaAdi.trim().toLowerCase() === itemNameLower &&
+            Number(c.boyut) === Number(item.size)
+        );
+        return pickPreferred(legacyMatches);
+      }
+
+      const fallbackMatches = cloudList.filter(
+        (c) =>
+          c.dosyaAdi.trim().toLowerCase() === itemNameLower &&
+          Number(c.boyut) === Number(item.size)
+      );
+      return pickPreferred(fallbackMatches);
+    };
+
     try {
+      let existingCloudFiles: CloudFileItem[] = [];
+      let activeProvider = 'google';
+
+      try {
+        const [filesRes, intRes] = await Promise.all([
+          adapter.getFiles(),
+          adapter.getIntegrations().catch(() => []),
+        ]);
+        existingCloudFiles = Array.isArray(filesRes) ? filesRes : [];
+        const connectedInt = (intRes || []).find((i) => i.isConnected !== false);
+        if (connectedInt?.providerType) {
+          activeProvider = connectedInt.providerType;
+        }
+      } catch {
+        // Ön kontrol listesi alınamazsa backend Upload uç noktası mükerrer kontrolünü devralır
+      }
+
+      const reusedFileNames: string[] = [];
+      let newlyUploadedCount = 0;
+
       for (const item of localItems) {
         if (!item.localFile) continue;
+
+        const existingMatch = findMatchingCloudFile(item, existingCloudFiles);
+        if (existingMatch) {
+          item.cloudFile = existingMatch;
+          item.reusedFromCloud = true;
+          uploadedCloudFiles.push(existingMatch);
+          reusedFileNames.push(item.name);
+
+          if (
+            effectiveDocumentId &&
+            effectiveDocumentId > 0 &&
+            effectiveDocumentType &&
+            (!existingMatch.belgeId || existingMatch.belgeId <= 0)
+          ) {
+            axios
+              .post('/api/Storage/Dosyalar/BelgeIliskilendir', {
+                dosyaId: existingMatch.id,
+                belgeTuru: effectiveDocumentType,
+                belgeId: effectiveDocumentId,
+                belgeGuid: effectiveDocumentGuid,
+                belgeNo: effectiveDocumentNo,
+              })
+              .catch(() => {});
+          }
+          continue;
+        }
+
         const uploadRes = await adapter.uploadFile({
           dosya: item.localFile,
-          provider: 'google',
+          provider: activeProvider,
           belgeTuru: effectiveDocumentType,
           belgeId: effectiveDocumentId,
           belgeGuid: effectiveDocumentGuid,
           belgeNo: effectiveDocumentNo,
+          contentHash: item.contentHash,
         });
+
         if (uploadRes?.dosya) {
-          item.cloudFile = uploadRes.dosya;
-          uploadedCloudFiles.push(uploadRes.dosya);
+          const resolvedCloudFile: CloudFileItem = {
+            ...uploadRes.dosya,
+            contentHash: uploadRes.dosya.contentHash || item.contentHash,
+          };
+          item.cloudFile = resolvedCloudFile;
+          uploadedCloudFiles.push(resolvedCloudFile);
+
+          if (uploadRes.zatenBuluttaVarMi) {
+            item.reusedFromCloud = true;
+            reusedFileNames.push(item.name);
+          } else {
+            newlyUploadedCount++;
+            existingCloudFiles = [resolvedCloudFile, ...existingCloudFiles];
+          }
         }
       }
-      toast.success(t('ExcelImport_cloudUploadSuccess', 'Dosya(lar) bulut depolamaya başarıyla kaydedildi.'));
-    } catch (cloudErr) {
+
+      if (reusedFileNames.length === 1) {
+        toast(
+          t(
+            'FileImport_alreadyOnCloudReuseToast',
+            '"{{name}}" dosyası halihazırda bulutta yüklü. Mükerrer yükleme yapılmadı, işlemler mevcut bulut dosyası üzerinden yürütülecektir.',
+            { name: reusedFileNames[0] }
+          ),
+          {
+            icon: <AlertTriangle size={18} className="text-warning shrink-0" />,
+            duration: 4500,
+          }
+        );
+      } else if (reusedFileNames.length > 1) {
+        toast(
+          t(
+            'FileImport_multipleAlreadyOnCloudReuseToast',
+            '{{count}} adet dosya halihazırda bulutta yüklü olduğu için yeniden yüklenmedi; işlemler mevcut bulut dosyaları üzerinden yürütülecektir.',
+            { count: reusedFileNames.length }
+          ),
+          {
+            icon: <AlertTriangle size={18} className="text-warning shrink-0" />,
+            duration: 4500,
+          }
+        );
+      }
+
+      if (newlyUploadedCount > 0) {
+        toast.success(
+          t('ExcelImport_cloudUploadSuccess', 'Dosya(lar) bulut depolamaya başarıyla kaydedildi.')
+        );
+      }
+    } catch (cloudErr: any) {
       console.error('Cloud auto-upload error:', cloudErr);
+      if (effectiveRequireUploadToCloud) {
+        throw new Error(
+          cloudErr?.message ||
+            t(
+              'FileImport_requiredCloudUploadFailed',
+              'Dosyanın buluta yüklenmesi zorunludur ancak bulut yüklemesi sırasında bir hata oluştu.'
+            )
+        );
+      }
       toast.error(
-        t('ExcelImport_cloudUploadError', 'Dosya içeri aktarıldı ancak bulut depolamaya yüklenirken bir hata oluştu.')
+        t(
+          'ExcelImport_cloudUploadError',
+          'Dosya içeri aktarıldı ancak bulut depolamaya yüklenirken bir hata oluştu.'
+        )
       );
     }
     return uploadedCloudFiles;
@@ -1242,7 +1449,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         dosyaAdi: item.name,
         uzanti: item.extension,
         boyut: item.size,
-        kaynak: item.source,
+        kaynak: cloudId ? 'cloud' : item.source,
         bulutDosyaId: cloudId,
         base64Verisi: base64Verisi || undefined,
       });
@@ -1442,35 +1649,44 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   };
 
   const sendToCloudAction = useMemo<ActionMenuItem>(() => {
-    const isEffectiveChecked = isBulutActive && sendToCloud && !allCloudFiles;
+    const isEffectiveChecked = isBulutActive && effectiveSendToCloud && !allCloudFiles;
+    const isSwitchDisabled = !isBulutActive || allCloudFiles || effectiveRequireUploadToCloud;
+    const tooltipTitle = allCloudFiles
+      ? t('ExcelImport_alreadyOnCloud', 'Zaten Bulutta')
+      : !isBulutActive
+        ? t('ExcelImport_moduleDisabled', 'Modül Pasif')
+        : effectiveRequireUploadToCloud
+          ? t('FileImport_uploadToCloudRequiredShort', 'Buluta yükleme zorunludur')
+          : t('FileImport_uploadToCloudLabel', 'Buluta Yükle');
+
     return {
-      label: t('Buluta_Kaydet', 'Buluta Kaydet'),
+      label: t('FileImport_uploadToCloudLabel', 'Buluta Yükle'),
       icon: <Cloud size={16} className={isEffectiveChecked ? 'text-primary' : 'text-secondary'} />,
       isDefault: true,
       default: true,
       variant: isEffectiveChecked ? 'primary' : 'default',
-      disabled: !isBulutActive || allCloudFiles,
-      title: allCloudFiles
-        ? t('ExcelImport_alreadyOnCloud', 'Zaten Bulutta')
-        : !isBulutActive
-          ? t('ExcelImport_moduleDisabled', 'Modül Pasif')
-          : t('Buluta_Kaydet', 'Buluta Kaydet'),
+      disabled: isSwitchDisabled,
+      title: tooltipTitle,
       onClick: () => {
-        if (!allCloudFiles && isBulutActive) {
+        if (!isSwitchDisabled) {
           setSendToCloud((prev) => !prev);
         }
       },
       custom: (
-        <div title={allCloudFiles ? t('ExcelImport_alreadyOnCloud', 'Zaten Bulutta') : undefined}>
+        <div title={tooltipTitle}>
           <BaseSwitch
             id="fileImportSendToCloudSwitch_actionMenu"
             checked={isEffectiveChecked}
-            disabled={!isBulutActive || allCloudFiles}
-            onChange={(e) => setSendToCloud(e.target.checked)}
+            disabled={isSwitchDisabled}
+            onChange={(e) => {
+              if (!isSwitchDisabled) {
+                setSendToCloud(e.target.checked);
+              }
+            }}
             label={
               <span className="flex items-center gap-8">
                 <Cloud size={15} className={isEffectiveChecked ? 'text-primary' : 'text-secondary'} />
-                <span>{t('Buluta_Kaydet', 'Buluta Kaydet')}</span>
+                <span>{t('FileImport_uploadToCloudLabel', 'Buluta Yükle')}</span>
               </span>
             }
             className="action-menu-switch-item"
@@ -1479,7 +1695,7 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
       ),
       dividerAbove: true,
     };
-  }, [isBulutActive, sendToCloud, allCloudFiles, t]);
+  }, [isBulutActive, effectiveSendToCloud, effectiveRequireUploadToCloud, allCloudFiles, t]);
 
   const cardExtraActions = useMemo<ActionMenuItem[]>(() => {
     const actions: ActionMenuItem[] = [];
@@ -1656,23 +1872,23 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
               </strong>
             </div>
 
-            <button
+            <BaseButton
               type="button"
-              className="btn btn-outline-secondary btn-sm flex items-center gap-6"
+              variant="outline-secondary"
+              className="btn-sm flex items-center gap-6"
               onClick={() => setCloudShowFolders((prev) => !prev)}
+              icon={cloudShowFolders ? <FolderClosed size={15} /> : <FolderTree size={15} />}
+              text={
+                cloudShowFolders
+                  ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
+                  : t('Klasorleri_Goster', 'Klasörleri Göster')
+              }
               title={
                 cloudShowFolders
                   ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
                   : t('Klasorleri_Goster', 'Klasörleri Göster')
               }
-            >
-              {cloudShowFolders ? <FolderClosed size={15} /> : <FolderTree size={15} />}
-              <span>
-                {cloudShowFolders
-                  ? t('Klasorleri_Gizle', 'Klasörleri Gizle')
-                  : t('Klasorleri_Goster', 'Klasörleri Göster')}
-              </span>
-            </button>
+            />
           </div>
         )}
 
@@ -1695,9 +1911,47 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
     </div>
   );
 
+  const uploadToCloudOptionSection = isBulutActive ? (
+    <div className="flex items-center justify-between p-14 rounded-10 bg-surface-variant border border-glass gap-12 flex-wrap">
+      <div className="flex items-center gap-10">
+        <div className="icon-box-sm rounded-8 bg-primary-light text-primary flex items-center justify-center shrink-0">
+          <Cloud size={16} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="font-semibold text-13 text-primary">
+            {t('FileImport_uploadToCloudLabel', 'Buluta Yükle')}
+          </span>
+          <span className="text-12 text-secondary">
+            {effectiveRequireUploadToCloud
+              ? t(
+                  'FileImport_uploadToCloudRequiredDesc',
+                  'Bu işlemde seçilen yerel dosyaların bulut depolamaya yüklenmesi zorunludur.'
+                )
+              : t(
+                  'FileImport_uploadToCloudDesc',
+                  'Bilgisayarınızdan seçtiğiniz dosyalar içeri aktarılırken aynı zamanda bulut depolamaya da yüklenir.'
+                )}
+          </span>
+        </div>
+      </div>
+      <BaseSwitch
+        id="fileImportUploadToCloudSwitch"
+        checked={effectiveSendToCloud}
+        disabled={!isBulutActive || effectiveRequireUploadToCloud}
+        onChange={(e: any) => {
+          if (effectiveRequireUploadToCloud) return;
+          const nextChecked = typeof e === 'boolean' ? e : Boolean(e?.target?.checked);
+          setSendToCloud(nextChecked);
+        }}
+      />
+    </div>
+  ) : null;
+
   const localTabContent = (
     <div className="excel-upload-section flex flex-col gap-16 pt-16">
       {filterToolbarSection}
+
+      {uploadToCloudOptionSection}
 
       <div
         className={`ai-file-dropzone cursor-pointer ${isDragging ? 'active' : ''}`}
@@ -1721,17 +1975,17 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         <span className="text-12 text-secondary mb-16">
           {t('FileImport_allowedFormatsLabel', 'İzin verilen formatlar')}: {filterBadgeLabel}
         </span>
-        <button
+        <BaseButton
           type="button"
-          className="btn btn-primary btn-sm flex items-center gap-6 pointer-events-none"
-        >
-          <FolderUp size={15} />
-          <span>
-            {effectiveSelectionMode === 'multiple'
+          variant="primary"
+          className="btn-sm flex items-center gap-6 pointer-events-none"
+          icon={<FolderUp size={15} />}
+          text={
+            effectiveSelectionMode === 'multiple'
               ? t('FileImport_chooseFilesBtn', 'Dosyaları Seç')
-              : t('ExcelImport_chooseFileBtn', 'Dosya Seç')}
-          </span>
-        </button>
+              : t('ExcelImport_chooseFileBtn', 'Dosya Seç')
+          }
+        />
       </div>
 
       {isExcelMappingMode && (
@@ -1805,26 +2059,30 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
         {activeSheetData && (
           <div className="flex items-center gap-12">
-            <button
+            <BaseButton
               type="button"
-              className="btn btn-primary-outline btn-sm flex items-center gap-6"
+              variant="primary-outline"
+              className="btn-sm flex items-center gap-6"
               onClick={handleAiAutoMatch}
               disabled={isAiMatching}
-              title={t('ExcelImport_aiAutoMatch', 'Yapay Zeka ile Otomatik Eşleştir')}
-            >
-              <Sparkles size={14} className={isAiMatching ? 'animate-spin text-accent' : 'text-accent'} />
-              <span className="font-medium">
-                {isAiMatching
+              icon={<Sparkles size={14} className={isAiMatching ? 'animate-spin text-accent' : 'text-accent'} />}
+              text={
+                isAiMatching
                   ? t('ExcelImport_aiMatching', 'Eşleştiriliyor...')
-                  : t('ExcelImport_aiAutoMatch', 'Yapay Zeka ile Otomatik Eşleştir')}
-              </span>
-            </button>
+                  : t('ExcelImport_aiAutoMatch', 'Yapay Zeka ile Otomatik Eşleştir')
+              }
+              title={t('ExcelImport_aiAutoMatch', 'Yapay Zeka ile Otomatik Eşleştir')}
+            />
             <span className="badge badge-neutral text-12 font-medium">
               {activeSheetData.data.length} {t('satır', 'satır')}
             </span>
           </div>
         )}
       </div>
+
+      {hasLocalFiles && uploadToCloudOptionSection && (
+        <div className="mt-16">{uploadToCloudOptionSection}</div>
+      )}
 
       {/* Sheet Tabs */}
       {sheets.length > 1 && (
@@ -2071,14 +2329,14 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
                   {t('FileImport_selectedFilesHeader', 'Seçilen Dosyalar')} ({selectedFiles.length})
                 </h4>
               </div>
-              <button
+              <BaseButton
                 type="button"
-                className="btn btn-ghost btn-sm text-danger flex items-center gap-6 text-12"
+                variant="ghost"
+                className="btn-sm text-danger flex items-center gap-6 text-12"
                 onClick={clearAllSelectedFiles}
-              >
-                <Trash2 size={14} />
-                <span>{t('FileImport_clearAllBtn', 'Tümünü Temizle')}</span>
-              </button>
+                icon={<Trash2 size={14} />}
+                text={t('FileImport_clearAllBtn', 'Tümünü Temizle')}
+              />
             </div>
 
             <div className="flex flex-col gap-8">
@@ -2099,7 +2357,9 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
                         {formatFileBytes(item.size)} •{' '}
                         {item.source === 'cloud'
                           ? t('ExcelImport_sourceCloud', 'Bulut Dosyası')
-                          : t('ExcelImport_sourceLocal', 'Yerel Dosya')}
+                          : effectiveSendToCloud && isBulutActive
+                            ? `${t('ExcelImport_sourceLocal', 'Yerel Dosya')} • ${t('FileImport_willUploadToCloud', 'Buluta Yüklenecek')}`
+                            : t('ExcelImport_sourceLocal', 'Yerel Dosya')}
                       </span>
                     </div>
                   </div>
@@ -2108,24 +2368,24 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
                     {['xlsx', 'xls', 'csv', 'ods', 'pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(
                       item.extension
                     ) && (
-                      <button
+                      <BaseButton
                         type="button"
-                        className="btn btn-ghost btn-sm text-12 flex items-center gap-4"
+                        variant="ghost"
+                        className="btn-sm text-12 flex items-center gap-4"
                         onClick={() => handlePreviewFileInNewTab(item)}
+                        icon={<ExternalLink size={14} />}
+                        text={t('Onizle', 'Önizle')}
                         title={t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç')}
-                      >
-                        <ExternalLink size={14} />
-                        <span>{t('Onizle', 'Önizle')}</span>
-                      </button>
+                      />
                     )}
-                    <button
+                    <BaseButton
                       type="button"
+                      variant="ghost"
                       className="btn-icon-xs text-danger"
                       onClick={() => removeSelectedFile(item.id)}
+                      icon={<Trash2 size={15} />}
                       title={t('Sil', 'Sil')}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    />
                   </div>
                 </div>
               ))}
