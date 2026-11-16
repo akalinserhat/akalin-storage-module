@@ -61,7 +61,7 @@ export type PipelineStageKey =
   | 'hash_check'
   | 'cloud_upload'
   | 'extracting'
-  | 'chunking_agent'
+  | 'chunking'
   | 'embedding'
   | 'saving'
   | 'indexed'
@@ -95,8 +95,6 @@ export const CloudRagProcessTrackerModal: React.FC<CloudRagProcessTrackerModalPr
   const [stageDetail, setStageDetail] = useState<string>('');
   const [pageCount, setPageCount] = useState<number>(0);
   const [totalChunks, setTotalChunks] = useState<number>(0);
-  const [chunkingModel, setChunkingModel] = useState<string>('gpt-4o');
-  const [chunkingAgentKod, setChunkingAgentKod] = useState<string>('RAG-CHUNK-UZMANI');
   const [vectorModel, setVectorModel] = useState<string>('bge-m3:latest');
   const [vectorAgentKod, setVectorAgentKod] = useState<string>('RAG-VEKTOR-UZMANI');
   const [isFinished, setIsFinished] = useState<boolean>(false);
@@ -213,8 +211,6 @@ export const CloudRagProcessTrackerModal: React.FC<CloudRagProcessTrackerModalPr
 
         if (res.pageCount && res.pageCount > 0) setPageCount(res.pageCount);
         if (res.totalChunks && res.totalChunks > 0) setTotalChunks(res.totalChunks);
-        if (res.chunkingModel) setChunkingModel(res.chunkingModel);
-        if (res.chunkingAgentKod) setChunkingAgentKod(res.chunkingAgentKod);
         if (res.statusDetail) setStageDetail(res.statusDetail);
 
         const stage = (res.indexingStage || res.status || '').toLowerCase();
@@ -231,15 +227,15 @@ export const CloudRagProcessTrackerModal: React.FC<CloudRagProcessTrackerModalPr
               ),
             'info'
           );
-        } else if (stage === 'chunking_agent' || stage === 'chunking_fallback') {
-          setActiveStage('chunking_agent');
+        } else if (stage === 'chunking' || stage === 'chunking_agent' || stage === 'chunking_fallback') {
+          setActiveStage('chunking');
           setOverallProgress(Math.max(35, res.indexingProgress || 45));
           addLog(
-            'chunking_agent',
+            'chunking',
             res.statusDetail ||
               t(
-                'CloudRagTracker_logChunkingAgent',
-                'RAG-CHUNK-UZMANI ajanı belge bölüm sınırlarını analiz ediyor...'
+                'CloudRagTracker_logChunking',
+                'Belge yapısal sayfa ve bölümlerine ayrıştırılıyor...'
               ),
             'info'
           );
@@ -346,7 +342,7 @@ export const CloudRagProcessTrackerModal: React.FC<CloudRagProcessTrackerModalPr
       'hash_check',
       'cloud_upload',
       'extracting',
-      'chunking_agent',
+      'chunking',
       'embedding',
       'saving',
       'indexed',
@@ -390,15 +386,14 @@ export const CloudRagProcessTrackerModal: React.FC<CloudRagProcessTrackerModalPr
       badge: 'Parser',
     },
     {
-      key: 'chunking_agent' as PipelineStageKey,
-      title: t('CloudRagTracker_step4Title', 'RAG Chunk Uzmanı Ajanı Analizi'),
+      key: 'chunking' as PipelineStageKey,
+      title: t('CloudRagTracker_step4Title', 'Yapısal & Semantik Bölümleme'),
       desc: t(
         'CloudRagTracker_step4Desc',
-        'Ajan belge pencerelerini analiz ederek tablo ve bölüm sınır indekslerini belirliyor.'
+        'Belge sayfaları, tabloları ve anlamsal geçiş noktaları korunarak RAG parçalarına bölünüyor.'
       ),
-      icon: Bot,
-      badge: `${chunkingAgentKod} (${chunkingModel})`,
-      agentHighlight: true,
+      icon: Layers,
+      badge: t('CloudRagTracker_badgeChunking', 'Yapısal & Semantik'),
     },
     {
       key: 'embedding' as PipelineStageKey,
@@ -570,9 +565,7 @@ export const CloudRagProcessTrackerModal: React.FC<CloudRagProcessTrackerModalPr
 
                     <span
                       className={`text-[10px] px-2 py-0.5 rounded-full font-medium truncate max-w-[150px] ${
-                        st.agentHighlight
-                          ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30'
-                          : st.vectorHighlight
+                        st.vectorHighlight
                           ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30'
                           : 'bg-secondary text-secondary-foreground'
                       }`}
