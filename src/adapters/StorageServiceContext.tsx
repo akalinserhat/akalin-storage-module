@@ -573,6 +573,13 @@ export function createRestStorageAdapter(options?: {
       return await handleJson(res);
     },
 
+    async getFileRagStatus(id: number): Promise<any> {
+      const res = await doFetch(`${apiPrefix}/Dosyalar/${id}/RagDurumu`, {
+        headers: getHeaders(),
+      });
+      return await handleJson(res);
+    },
+
     async syncAllFilesToRag(): Promise<RagSyncAllResultDTO> {
       const res = await doFetch(`${apiPrefix}/Dosyalar/RagEsitle`, {
         method: 'POST',
@@ -755,6 +762,20 @@ export function createLocalStorageStorageAdapter(options?: {
         ragSayfaSayisi: 1,
         ragParcaSayisi: 12,
         ragTokenSayisi: 1850,
+      };
+    },
+    async getFileRagStatus(id: number): Promise<any> {
+      const file = files.find((f) => f.id === id);
+      return {
+        bulutDosyaId: id,
+        fileName: file?.dosyaAdi || `Dosya_${id}`,
+        supported: true,
+        status: file?.ragAktarildiMi ? 'indexed' : 'not_indexed',
+        indexingStage: file?.ragAktarildiMi ? 'indexed' : 'not_indexed',
+        indexingProgress: file?.ragAktarildiMi ? 100 : 0,
+        statusDetail: file?.ragAktarildiMi ? 'İndeks hazır.' : 'Henüz indekslenmedi.',
+        totalChunks: file?.ragParcaSayisi || 0,
+        pageCount: file?.ragSayfaSayisi || 0,
       };
     },
     async syncAllFilesToRag(): Promise<RagSyncAllResultDTO> {

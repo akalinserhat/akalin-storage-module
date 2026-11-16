@@ -41,6 +41,7 @@ import {
   BaseButton,
 } from '@akalin/ui';
 import UploadToCloud from './UploadToCloud';
+import { CloudRagProcessTrackerModal } from './CloudRagProcessTrackerModal';
 import { resolveDocumentTypeFromContext, useStorageModule } from '../adapters/StorageServiceContext';
 import { ProviderLogo } from '../logos/ProviderLogo';
 import { CloudFileItem, CloudFolderItem, FileSelectionMode, StorageIntegrationDTO } from '../types';
@@ -335,6 +336,7 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
       status: 'running',
       message: '',
     });
+    const [trackerModalFile, setTrackerModalFile] = useState<CloudFileItem | null>(null);
 
     const ragTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const localFileInputRef = useRef<HTMLInputElement>(null);
@@ -546,128 +548,21 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
     };
 
     const handleConvertFileToRag = useCallback(
-      async (file: CloudFileItem) => {
+      (file: CloudFileItem) => {
         if (!adapter.convertFileToRag) {
           notify('error', t('FilesOnClouds_ragNotSupportedByAdapter', 'RAG dönüşüm servisi tanımlı değil.'));
           return;
         }
 
-        if (ragTimerRef.current) {
-          clearInterval(ragTimerRef.current);
-          ragTimerRef.current = null;
-        }
-
-        setRagConversionState({
-          isActive: true,
-          mode: 'single',
-          targetFile: file,
-          totalFiles: 1,
-          processedFiles: 0,
-          progress: 14,
-          activeStep: 1,
-          status: 'running',
-          message: t('FilesOnClouds_ragStep1Desc', 'Bulut sürücüsünden dosya verisi indiriliyor...'),
-        });
-
-        let simulatedProgress = 14;
-        ragTimerRef.current = setInterval(() => {
-          simulatedProgress = Math.min(88, simulatedProgress + 6);
-          const nextStep: 1 | 2 | 3 | 4 =
-            simulatedProgress < 35 ? 1 : simulatedProgress < 62 ? 2 : 3;
-          const nextMsg =
-            nextStep === 1
-              ? t('FilesOnClouds_ragStep1Desc', 'Bulut sürücüsünden dosya verisi indiriliyor...')
-              : nextStep === 2
-                ? t('FilesOnClouds_ragStep2Desc', 'Döküman sayfaları ve tablolar ayrıştırılıyor...')
-                : t(
-                    'FilesOnClouds_ragStep3Desc',
-                    'Metin parçalanıyor (Chunking) ve 384 boyutlu vektörler hesaplanıyor...'
-                  );
-
-          setRagConversionState((prev) => {
-            if (prev.status !== 'running') return prev;
-            return {
-              ...prev,
-              progress: simulatedProgress,
-              activeStep: nextStep,
-              message: nextMsg,
-            };
-          });
-        }, 280);
-
-        try {
-          const res = await adapter.convertFileToRag(file.id);
-          if (ragTimerRef.current) {
-            clearInterval(ragTimerRef.current);
-            ragTimerRef.current = null;
-          }
-
-          if (!res || res.success === false) {
-            const errText =
-              res?.mesaj || t('FilesOnClouds_ragConvertError', 'Dosya RAG veritabanına aktarılırken bir hata oluştu.');
-            setRagConversionState((prev) => ({
-              ...prev,
-              status: 'error',
-              errorDetail: errText,
-              message: errText,
-            }));
-            notify('error', errText);
-            return;
-          }
-
-          setRagConversionState((prev) => ({
-            ...prev,
-            processedFiles: 1,
-            progress: 100,
-            activeStep: 4,
-            status: 'completed',
-            message:
-              res.mesaj ||
-              t('FilesOnClouds_ragConvertSuccess', 'Döküman başarıyla PostgreSQL (pgvector) RAG veritabanına aktarıldı.'),
-            stats: {
-              pageCount: res.ragSayfaSayisi ?? 1,
-              chunkCount: res.ragParcaSayisi ?? 1,
-              tokenCount: res.ragTokenSayisi ?? 0,
-            },
-          }));
-
-          setFiles((prev) =>
-            prev.map((item) =>
-              item.id === file.id
-                ? {
-                    ...item,
-                    ragAktarildiMi: true,
-                    ragSayfaSayisi: res.ragSayfaSayisi ?? item.ragSayfaSayisi ?? 1,
-                    ragParcaSayisi: res.ragParcaSayisi ?? item.ragParcaSayisi ?? 1,
-                    ragTokenSayisi: res.ragTokenSayisi ?? item.ragTokenSayisi ?? 0,
-                    ragDocId: res.docId ?? item.ragDocId,
-                  }
-                : item
-            )
-          );
-
+        setTrackerModalFile(file);
+        adapter.convertFileToRag(file.id).catch((err: any) => {
           notify(
-            'success',
-            res.mesaj || t('FilesOnClouds_ragConvertSuccess', 'Döküman başarıyla PostgreSQL (pgvector) RAG veritabanına aktarıldı.')
+            'error',
+            err?.message || t('FilesOnClouds_ragConvertError', 'Dosya RAG veritabanına aktarılırken bir hata oluştu.')
           );
-          fetchFiles();
-        } catch (err: any) {
-          if (ragTimerRef.current) {
-            clearInterval(ragTimerRef.current);
-            ragTimerRef.current = null;
-          }
-          const errText =
-            err?.message || t('FilesOnClouds_ragConvertError', 'Dosya RAG veritabanına aktarılırken bir hata oluştu.');
-          setRagConversionState((prev) => ({
-            ...prev,
-            status: 'error',
-            errorDetail: errText,
-            message: errText,
-          }));
-          notify('error', errText);
-        }
+        });
       },
-      [adapter, fetchFiles, t]
+      [adapter, notify, t]
     );
 
     const handleConvertAllPendingToRag = useCallback(async () => {
@@ -843,8 +738,12 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
               return (
                 <div className="rag-status-cell">
                   <span
-                    className="rag-status-badge is-indexed"
-                    title={t('FilesOnClouds_ragIndexedTooltip', 'PostgreSQL (pgvector) RAG veritabanında aktif')}
+                    className="rag-status-badge is-indexed cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTrackerModalFile(row);
+                    }}
+                    title={t('FilesOnClouds_ragIndexedTooltip', 'PostgreSQL (pgvector) RAG veritabanında aktif. Ajan ve chunk detaylarını görmek için tıklayın.')}
                   >
                     <CheckCircle2 size={14} />
                     <span>{t('FilesOnClouds_ragIndexed', 'RAG Aktif')}</span>
@@ -861,8 +760,12 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
             return (
               <div className="rag-status-cell" onClick={(e) => e.stopPropagation()}>
                 <span
-                  className="rag-status-badge is-pending"
-                  title={t('FilesOnClouds_ragNotIndexedTooltip', 'Bu döküman henüz RAG vektör veritabanına aktarılmamış')}
+                  className="rag-status-badge is-pending cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleConvertFileToRag(row);
+                  }}
+                  title={t('FilesOnClouds_ragNotIndexedTooltip', 'Bu döküman henüz RAG vektör veritabanına aktarılmamış. Ajan ve indeksleme sürecini başlatmak için tıklayın.')}
                 >
                   <AlertCircle size={14} />
                   <span>{t('FilesOnClouds_ragNotIndexed', 'Aktarılmadı')}</span>
@@ -1406,6 +1309,38 @@ export const FilesOnClouds = React.forwardRef<FilesOnCloudsHandle, FilesOnClouds
           cancelText={t('Iptal', 'İptal')}
           onConfirm={executeDeleteFile}
         />
+
+        {/* Modal: Canlı Bulut & RAG Ajanı Süreç Takipçisi */}
+        {trackerModalFile && (
+          <CloudRagProcessTrackerModal
+            isOpen={Boolean(trackerModalFile)}
+            onClose={() => {
+              setTrackerModalFile(null);
+              fetchFiles();
+            }}
+            fileId={trackerModalFile.id}
+            fileName={trackerModalFile.dosyaAdi}
+            fileSize={trackerModalFile.boyut}
+            provider={trackerModalFile.provider}
+            belgeTuru={trackerModalFile.belgeTuru}
+            isUploadedToCloud={true}
+            onCompleted={(res) => {
+              setFiles((prev) =>
+                prev.map((item) =>
+                  item.id === trackerModalFile.id
+                    ? {
+                        ...item,
+                        ragAktarildiMi: true,
+                        ragSayfaSayisi: res.pageCount ?? item.ragSayfaSayisi ?? 1,
+                        ragParcaSayisi: res.totalChunks ?? item.ragParcaSayisi ?? 1,
+                      }
+                    : item
+                )
+              );
+              fetchFiles();
+            }}
+          />
+        )}
       </div>
     );
   }

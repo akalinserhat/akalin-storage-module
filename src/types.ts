@@ -57,6 +57,22 @@ export interface RagConvertResultDTO {
   ragTokenSayisi?: number;
 }
 
+export interface RagDocumentStatusDTO {
+  bulutDosyaId: number;
+  fileName: string;
+  supported: boolean;
+  status: 'indexing' | 'indexed' | 'failed' | 'not_indexed' | 'unsupported' | string;
+  indexingStage?: 'queued' | 'extracting' | 'chunking_agent' | 'chunking_fallback' | 'embedding' | 'saving' | 'indexed' | 'failed' | string;
+  indexingProgress: number;
+  statusDetail?: string;
+  pageCount?: number;
+  totalChunks?: number;
+  chunkingMode?: string;
+  chunkingAgentKod?: string;
+  chunkingModel?: string;
+  updatedAt?: string;
+}
+
 export interface RagSyncAllResultDTO {
   success: boolean;
   indexedCount?: number;
@@ -209,6 +225,7 @@ export interface IStorageServiceAdapter {
   renameFile(id: number, yeniAd: string): Promise<CloudFileItem>;
   deleteFile(id: number): Promise<void>;
   convertFileToRag?(id: number): Promise<RagConvertResultDTO>;
+  getFileRagStatus?(id: number): Promise<RagDocumentStatusDTO>;
   syncAllFilesToRag?(): Promise<RagSyncAllResultDTO>;
   getSettingByKey?(key: string): Promise<SettingKeyValueDTO | null>;
   saveSettingByKey?(key: string, data: SettingKeyValueDTO): Promise<void>;

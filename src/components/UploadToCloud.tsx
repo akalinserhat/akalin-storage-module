@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useStorageModule } from '../adapters/StorageServiceContext';
 import { ProviderLogo } from '../logos/ProviderLogo';
 import { StorageIntegrationDTO } from '../types';
+import { CloudRagProcessTrackerModal } from './CloudRagProcessTrackerModal';
 
 export interface UploadToCloudProps {
   isOpen: boolean;
@@ -51,6 +52,13 @@ export const UploadToCloud: React.FC<UploadToCloudProps> = ({
   const [loadedBytes, setLoadedBytes] = useState(0);
   const [totalBytes, setTotalBytes] = useState(0);
   const [autoUploadTriggered, setAutoUploadTriggered] = useState(false);
+  const [trackerFile, setTrackerFile] = useState<{
+    fileId: number;
+    fileName: string;
+    fileSize: number;
+    provider: string;
+  } | null>(null);
+  const [uploadedResult, setUploadedResult] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -143,16 +151,25 @@ export const UploadToCloud: React.FC<UploadToCloudProps> = ({
         abortControllerRef.current.signal
       );
 
-      notify('success', result?.mesaj || t('UploadToCloud_uploadSuccess', 'Dosya başarıyla yüklendi.'));
-      if (onUploadSuccess) onUploadSuccess(result.dosya, selectedFile);
-      onClose();
-
-      setSelectedFile(null);
-      setSelectedProvider('');
-      setUploadProgress(0);
-      setLoadedBytes(0);
-      setTotalBytes(0);
-      setAutoUploadTriggered(false);
+      setUploadedResult({ dosya: result.dosya, originalFile: selectedFile });
+      if (result?.dosya?.id) {
+        setTrackerFile({
+          fileId: result.dosya.id,
+          fileName: result.dosya.dosyaAdi || selectedFile.name,
+          fileSize: result.dosya.boyut || selectedFile.size,
+          provider: providerToUse,
+        });
+      } else {
+        notify('success', result?.mesaj || t('UploadToCloud_uploadSuccess', 'Dosya başarıyla yüklendi.'));
+        if (onUploadSuccess) onUploadSuccess(result.dosya, selectedFile);
+        onClose();
+        setSelectedFile(null);
+        setSelectedProvider('');
+        setUploadProgress(0);
+        setLoadedBytes(0);
+        setTotalBytes(0);
+        setAutoUploadTriggered(false);
+      }
     } catch (error: any) {
       if (error?.isCancel || error?.name === 'AbortError') {
         notify('info', t('UploadToCloud_uploadCancelled', 'Yükleme işlemi iptal edildi.'));
@@ -172,7 +189,36 @@ export const UploadToCloud: React.FC<UploadToCloudProps> = ({
     }
   };
 
+  const handleTrackerClose = () => {
+    if (uploadedResult && onUploadSuccess) {
+      onUploadSuccess(uploadedResult.dosya, uploadedResult.originalFile);
+    }
+    setTrackerFile(null);
+    onClose();
+    setSelectedFile(null);
+    setSelectedProvider('');
+    setUploadProgress(0);
+    setLoadedBytes(0);
+    setTotalBytes(0);
+    setAutoUploadTriggered(false);
+  };
+
   if (!isOpen) return null;
+
+  if (trackerFile) {
+    return (
+      <CloudRagProcessTrackerModal
+        isOpen={Boolean(trackerFile)}
+        onClose={handleTrackerClose}
+        fileId={trackerFile.fileId}
+        fileName={trackerFile.fileName}
+        fileSize={trackerFile.fileSize}
+        provider={trackerFile.provider}
+        belgeTuru={documentType}
+        isUploadedToCloud={true}
+      />
+    );
+  }
 
   return (
     <BasePopup

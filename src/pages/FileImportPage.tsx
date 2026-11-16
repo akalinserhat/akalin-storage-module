@@ -31,6 +31,7 @@ import {
   Files,
   FileCheck,
   Plus,
+  Bot,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -58,6 +59,7 @@ import FilesOnClouds, {
   getFileExtension,
   renderFileTypeIcon,
 } from '../components/FilesOnClouds';
+import { CloudRagProcessTrackerModal } from '../components/CloudRagProcessTrackerModal';
 import {
   computeSha256Hex,
   resolveDocumentTypeFromContext,
@@ -625,6 +627,12 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   const [isAiMatching, setIsAiMatching] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [trackerModalFile, setTrackerModalFile] = useState<{
+    id: number;
+    name: string;
+    size: number;
+    provider: string;
+  } | null>(null);
 
   // Bulut'a yükleme zorunluluğu ve varsayılan durumu (Prop, location.state ve harici düğüm ayarlarından çözümlenir)
   const locationStateObj = (location.state as any) || {};
@@ -1261,6 +1269,12 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
 
       const reusedFileNames: string[] = [];
       let newlyUploadedCount = 0;
+      let lastUploadedForTracker: {
+        id: number;
+        name: string;
+        size: number;
+        provider: string;
+      } | null = null;
 
       for (const item of localItems) {
         if (!item.localFile) continue;
@@ -1315,8 +1329,18 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
           } else {
             newlyUploadedCount++;
             existingCloudFiles = [resolvedCloudFile, ...existingCloudFiles];
+            lastUploadedForTracker = {
+              id: resolvedCloudFile.id,
+              name: item.name,
+              size: item.size,
+              provider: activeProvider,
+            };
           }
         }
+      }
+
+      if (lastUploadedForTracker) {
+        setTrackerModalFile(lastUploadedForTracker);
       }
 
       if (reusedFileNames.length === 1) {
@@ -2280,10 +2304,11 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
   ];
 
   const cardContent = (
-    <BaseCardPage
-      id="fileImportCardPage"
-      icon={isExcelMappingMode ? <FileSpreadsheet size={20} /> : <FolderUp size={20} />}
-      title={pageTitleText}
+    <>
+      <BaseCardPage
+        id="fileImportCardPage"
+        icon={isExcelMappingMode ? <FileSpreadsheet size={20} /> : <FolderUp size={20} />}
+        title={pageTitleText}
       pageTitle={pageTitleText}
       subtitleLeft={subtitleText}
       showBackButton={true}
@@ -2378,6 +2403,24 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
                         title={t('ExcelImport_openInNewTab', 'Yeni Sekmede Aç')}
                       />
                     )}
+                    {item.cloudFile?.id && (
+                      <BaseButton
+                        type="button"
+                        variant="ghost"
+                        className="btn-sm text-12 flex items-center gap-4 text-purple-600 dark:text-purple-400"
+                        onClick={() =>
+                          setTrackerModalFile({
+                            id: item.cloudFile!.id,
+                            name: item.name,
+                            size: item.size,
+                            provider: item.cloudFile?.provider || 'google',
+                          })
+                        }
+                        icon={<Bot size={14} />}
+                        text={t('FileImport_btnViewRagStatus', 'Ajan & RAG Süreci')}
+                        title={t('FileImport_btnViewRagStatusTitle', 'Bulut ve Yapay Zeka (RAG) indeksleme sürecini görüntüle')}
+                      />
+                    )}
                     <BaseButton
                       type="button"
                       variant="ghost"
@@ -2394,6 +2437,19 @@ export const FileImportPage: React.FC<FileImportPageProps> = ({
         )}
       </div>
     </BaseCardPage>
+    {trackerModalFile && (
+      <CloudRagProcessTrackerModal
+        isOpen={Boolean(trackerModalFile)}
+        onClose={() => setTrackerModalFile(null)}
+        fileId={trackerModalFile.id}
+        fileName={trackerModalFile.name}
+        fileSize={trackerModalFile.size}
+        provider={trackerModalFile.provider}
+        belgeTuru={effectiveDocumentType}
+        isUploadedToCloud={true}
+      />
+    )}
+  </>
   );
 
   if (isModalMode) {
